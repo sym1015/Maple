@@ -106,6 +106,10 @@ async function main() {
   for (const [key, v] of [...pairs].sort((a, b) => a[0].localeCompare(b[0]))) {
     console.log(`  ${key.padEnd(48)} ${String(v.count).padStart(6)}  → ${v.to}${v.mapped ? "" : "  (미매핑)"}`);
   }
+  const perDesigner = new Map<DesignerCategory, number>();
+  for (const v of pairs.values()) perDesigner.set(v.to, (perDesigner.get(v.to) ?? 0) + v.count);
+  console.log("\nDesigner category totals:");
+  for (const c of DESIGNER_CATEGORIES) console.log(`  ${c.padEnd(16)} ${perDesigner.get(c) ?? 0}`);
   if (unmapped.size) {
     console.log(`\n매핑되지 않아 etc 로 분류된 조합 ${unmapped.size}개. category-map.ts 에 추가하세요.`);
   }
