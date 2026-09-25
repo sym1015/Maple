@@ -34,7 +34,8 @@
     "test": "react-scripts test --env=jsdom",
     "eject": "react-scripts eject",
     "assets:test": "tsx scripts/asset-collector/test-api.ts",
-    "assets:typecheck": "tsc -p scripts/tsconfig.json"
+    "assets:typecheck": "tsc -p scripts/tsconfig.json",
+    "assets:collect": "tsx scripts/asset-collector/collect.ts"
   },
   "browserslist": [
     ">0.2%",

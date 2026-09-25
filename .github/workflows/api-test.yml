@@ -21,7 +21,11 @@ jobs:
         run: |
           cp .env.example .env
           npm run assets:test || echo "::warning::일부 API 엔드포인트가 실패했습니다 (위 로그 참고)"
+      - name: Collect 10 items (smoke test)
+        run: npm run assets:collect -- --limit=10
       - uses: actions/upload-artifact@v4
         with:
           name: api-test-report
-          path: data/api-test-report.json
+          path: |
+            data/
+            assets/items/
