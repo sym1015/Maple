@@ -1,5 +1,6 @@
 /**
  * npm run assets:collect [-- --category=hat] [-- --id=1302000] [-- --limit=10] [-- --dry-run]
+ *   --limit=0 only refreshes data/ (no downloads).
  *
  * 1. Resolves the API base (MAPLE_VERSION=latest → newest real version from /wz).
  * 2. Fetches the equip item list and normalizes it (category-map.ts).
@@ -35,7 +36,11 @@ function parseArgs(argv: string[]): Args {
       }
       args.category = value as DesignerCategory;
     } else if (key === "id") args.ids = value.split(",").map(Number).filter(Number.isFinite);
-    else if (key === "limit") args.limit = Number(value);
+    else if (key === "limit") {
+      const n = Number(value);
+      if (!Number.isInteger(n) || n < 0) throw new Error(`--limit 은 0 이상의 정수여야 합니다: ${value}`);
+      args.limit = n;
+    }
     else throw new Error(`알 수 없는 옵션: ${arg}`);
   }
   return args;
@@ -94,7 +99,8 @@ async function main() {
   let items = allItems;
   if (args.ids) items = items.filter((i) => args.ids!.includes(i.id));
   if (args.category) items = items.filter((i) => i.category === args.category);
-  if (args.limit) items = items.slice(0, args.limit);
+  // --limit=0 downloads nothing and only refreshes the item lists.
+  if (args.limit !== undefined) items = items.slice(0, args.limit);
 
   // Category summary: every (category / subCategory) pair seen and where it maps to.
   const pairs = new Map<string, { count: number; to: DesignerCategory; mapped: boolean }>();
@@ -120,6 +126,49 @@ async function main() {
   console.log(`\n처리 대상: ${items.length}개`);
   const stats = { total: items.length, downloaded: 0, skipped: 0, failed: 0 };
   const failures: Failure[] = [];
+
+  // Written before downloading (so every category shows up right away), every
+  // WRITE_EVERY processed icons, and at the end; long runs no longer hide new data.
+  const writeData = (final: boolean) => {
+    // Link every icon that exists on disk (from this or earlier runs).
+    let iconsOnDisk = 0;
+    for (const item of allItems) {
+      const exists = existsSync(path.join(config.root, "assets", "items", item.category, `${item.id}.png`));
+      item.icon = exists ? `assets/items/${item.category}/${item.id}.png` : undefined;
+      if (exists) iconsOnDisk++;
+    }
+
+    const dataDir = path.join(config.root, "data");
+    const byCategory: Partial<Record<DesignerCategory, Record<string, MapleItem>>> = {};
+    for (const item of allItems) (byCategory[item.category] ??= {})[item.id] = item;
+    for (const [category, entries] of Object.entries(byCategory)) {
+      writeJson(path.join(dataDir, "items", `${category}.json`), entries);
+    }
+    // The combined file is large; only write it at the end of a run.
+    if (final) writeJson(path.join(dataDir, "items.json"), Object.fromEntries(allItems.map((i) => [i.id, i])));
+    writeJson(
+      path.join(dataDir, "categories.json"),
+      DESIGNER_CATEGORIES.map((id) => {
+        const entries = Object.values(byCategory[id] ?? {});
+        return { id, count: entries.length, withIcon: entries.filter((i) => i.icon).length };
+      }),
+    );
+    writeJson(path.join(dataDir, "raw", "item-category.json"), categoryTree);
+    writeJson(path.join(dataDir, "download-failures.json"), failures);
+    writeJson(path.join(dataDir, "manifest.json"), {
+      version: `${region}/${version}`,
+      generatedAt: new Date().toISOString(),
+      totalItems: allItems.length,
+      iconsOnDisk,
+      lastRun: { targets: stats.total, downloaded: stats.downloaded, skipped: stats.skipped, failed: stats.failed },
+    });
+  };
+  const WRITE_EVERY = 500;
+
+  if (!args.dryRun) {
+    writeData(false);
+    console.log("data/ 목록을 먼저 저장했습니다. 다운로드 중에도 500개마다 갱신됩니다.");
+  }
 
   await runPool(items, config.concurrency, config.delayMs, async (item) => {
     const file = path.join(config.root, "assets", "items", item.category, `${item.id}.png`);
@@ -150,41 +199,13 @@ async function main() {
     }
     const done = stats.downloaded + stats.skipped + stats.failed;
     if (done % 100 === 0) console.log(`  진행 ${done}/${stats.total}`);
+    if (!args.dryRun && done % WRITE_EVERY === 0) writeData(false);
   });
 
   console.log(`\nTotal: ${stats.total}\nDownloaded: ${stats.downloaded}\nSkipped: ${stats.skipped}\nFailed: ${stats.failed}`);
   if (args.dryRun) return;
 
-  // Link every icon that exists on disk (from this or earlier runs).
-  let iconsOnDisk = 0;
-  for (const item of allItems) {
-    if (existsSync(path.join(config.root, "assets", "items", item.category, `${item.id}.png`))) iconsOnDisk++;
-    else item.icon = undefined;
-  }
-
-  const dataDir = path.join(config.root, "data");
-  const byCategory: Partial<Record<DesignerCategory, Record<string, MapleItem>>> = {};
-  for (const item of allItems) (byCategory[item.category] ??= {})[item.id] = item;
-  for (const [category, entries] of Object.entries(byCategory)) {
-    writeJson(path.join(dataDir, "items", `${category}.json`), entries);
-  }
-  writeJson(path.join(dataDir, "items.json"), Object.fromEntries(allItems.map((i) => [i.id, i])));
-  writeJson(
-    path.join(dataDir, "categories.json"),
-    DESIGNER_CATEGORIES.map((id) => {
-      const entries = Object.values(byCategory[id] ?? {});
-      return { id, count: entries.length, withIcon: entries.filter((i) => i.icon).length };
-    }),
-  );
-  writeJson(path.join(dataDir, "raw", "item-category.json"), categoryTree);
-  writeJson(path.join(dataDir, "download-failures.json"), failures);
-  writeJson(path.join(dataDir, "manifest.json"), {
-    version: `${region}/${version}`,
-    generatedAt: new Date().toISOString(),
-    totalItems: allItems.length,
-    iconsOnDisk,
-    lastRun: { targets: stats.total, downloaded: stats.downloaded, skipped: stats.skipped, failed: stats.failed },
-  });
+  writeData(true);
   console.log(`data/ 에 JSON 을 저장했습니다.${failures.length ? " 실패 목록: data/download-failures.json" : ""}`);
 }
 
