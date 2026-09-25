@@ -27,9 +27,9 @@ function redact(value: unknown, depth = 0): unknown {
 
 async function show(label: string, url: string): Promise<unknown> {
   const res = await request(url);
-  console.log(`\n=== ${label}\nURL: ${url}\nHTTP ${res.status || "(응답 없음)"} ${res.contentType}${res.error ? ` [${res.error}]` : ""}`);
+  console.log(`\n=== ${label}\nURL: ${url}\nHTTP ${res.status || "(응답 없음)"} ${res.contentType} (${res.body.length} bytes) CORS=${res.cors ?? "없음"}${res.error ? ` [${res.error}]` : ""}`);
   if (!res.ok || !res.contentType.includes("json")) {
-    if (res.body.length) console.log(res.body.toString("utf8").slice(0, 300));
+    if (res.body.length && !res.contentType.startsWith("image/")) console.log(res.body.toString("utf8").slice(0, 300));
     return undefined;
   }
   return JSON.parse(res.body.toString("utf8"));
@@ -71,10 +71,23 @@ async function main() {
   // Skin (body/head) is not served by /item; probe the Character endpoints instead.
   const skins = await show("Character skin list", `${base}/Character`);
   if (skins) console.log(`skins: ${JSON.stringify(redact(skins)).slice(0, 600)}`);
-  for (const items of ["", "30000,20000", "30000%2C20000"]) {
-    const path = items ? `detailed/2000/${items}/stand1/0` : "detailed/2000";
-    const detail = await show(`Character ${path}`, `${base}/Character/${path}`);
-    if (detail !== undefined) console.log(`detail (redacted): ${JSON.stringify(redact(detail), null, 1).slice(0, 5000)}`);
+  // Server-side composite render: try the item-list formats seen in the legacy app and source.
+  const { region, version } = await resolveBase();
+  const entry = (id: number) => ({ itemId: id, region: region.toUpperCase(), version });
+  const jsonItems = encodeURIComponent([2000, 12000, 30000, 20000].map((id) => JSON.stringify(entry(id))).join(","));
+  const renderCandidates = [
+    `${base}/Character/2000`,
+    `${base}/Character/2000/30000`,
+    `${base}/Character/2000/30000,20000`,
+    `${base}/Character/2000/30000,20000/stand1/0`,
+    `${base}/Character/center/2000/30000,20000/stand1/0`,
+    `${base}/Character/base/2000`,
+    `${base}/Character/actions/30000,20000`,
+    `${base.replace(/\/[^/]+\/[^/]+$/, "")}/character/${jsonItems}/stand1/0`,
+  ];
+  for (const url of renderCandidates) {
+    const detail = await show("render probe", url);
+    if (detail !== undefined) console.log(`json (redacted): ${JSON.stringify(redact(detail), null, 1).slice(0, 1500)}`);
   }
 
   const list = await request(`${base}/item/category/equip`);

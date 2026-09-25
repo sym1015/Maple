@@ -6,6 +6,8 @@ export interface HttpResult {
   /** 0 when no HTTP response was received (DNS failure, timeout, reset). */
   status: number;
   contentType: string;
+  /** Access-Control-Allow-Origin response header, if any. */
+  cors?: string;
   body: Buffer;
   attempts: number;
   error?: string;
@@ -31,6 +33,7 @@ export async function request(url: string, opts: { retries?: number } = {}): Pro
         ok: res.ok,
         status: res.status,
         contentType: res.headers.get("content-type") ?? "",
+        cors: res.headers.get("access-control-allow-origin") ?? undefined,
         body,
         attempts: attempt,
       };
