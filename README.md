@@ -28,6 +28,15 @@ docker build -t maple .
 docker run -p 8080:80 maple
 ```
 
+## 웹사이트로 배포 (GitHub Pages)
+
+`main` 브랜치에 코드가 들어가면 `.github/workflows/deploy.yml`이 자동으로 빌드해서
+https://sym1015.github.io/Maple/ 에 올립니다. 처음 한 번만 아래 설정이 필요합니다.
+
+1. 무료 계정이라면 **Settings → General → Danger Zone → Change visibility**에서 저장소를 Public으로 바꿉니다.
+2. **Settings → Pages → Build and deployment → Source**를 **GitHub Actions**로 바꿉니다.
+3. 이미 main에 코드가 있다면 **Actions** 탭 → *Deploy to GitHub Pages* → **Run workflow**를 누릅니다.
+
 ## 원본에서 바꾼 점
 
 - `.npmrc` 추가 (`legacy-peer-deps=true`): 최신 npm에서 React 15 관련 peer 의존성 충돌로 설치가 실패하는 문제 해결
