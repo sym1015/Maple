@@ -139,9 +139,23 @@ export async function loadFrame(
 }
 
 /**
- * Load every distinct frame of an action. Frames are requested in windows of
- * `concurrency`; loading stops at the first index i where frame i and i+1 repeat
- * frames 0 and 1 (or immediately when frame 1 equals frame 0 → 1-frame action).
+ * Smallest period p such that every loaded hash repeats with period p, confirmed by
+ * having seen at least one full repeat plus two more frames (p + max(p, 3) frames).
+ * Returns null while undecided. Examples: [a,b,c,a,b,c] → 3, [a,a,b,a,a,b] → 3,
+ * [a,a,a,a] → 1 (the first two frames being equal does not end the animation early).
+ */
+export function detectFrameCount(hashes: string[]): number | null {
+  for (let p = 1; p <= hashes.length; p++) {
+    if (hashes.length < p + Math.max(p, 3)) return null;
+    if (hashes.every((h, i) => h === hashes[i % p])) return p;
+  }
+  return null;
+}
+
+/**
+ * Load every distinct frame of an action. The API wraps frame numbers around instead
+ * of failing, so frames are requested in windows of `concurrency` until
+ * detectFrameCount() finds the repeat period.
  */
 export async function loadAnimationFrames(
   equipment: CharacterEquipment,
@@ -154,23 +168,17 @@ export async function loadAnimationFrames(
     loadFrame(framePath(equipment, action, i, anchor), `${characterHash}/${action}/${anchor}/${i}`, i, anchor, { signal, events });
 
   const loaded: LoadedFrame[] = [];
-  let next = 0;
-  while (next <= maxFrames) {
-    const batch = await Promise.all(
-      Array.from({ length: Math.min(concurrency, maxFrames + 1 - next) }, (_, k) => get(next + k)),
-    );
+  // Enough frames to confirm a period of maxFrames.
+  const limit = maxFrames * 2;
+  while (loaded.length < limit) {
+    const start = loaded.length;
+    const batch = await Promise.all(Array.from({ length: Math.min(concurrency, limit - start) }, (_, k) => get(start + k)));
     for (const frame of batch) {
       loaded[frame.index] = frame;
       events?.onFrame?.(frame);
     }
-    next += batch.length;
-
-    if (loaded.length >= 2 && loaded[1].hash === loaded[0].hash) return { frames: [loaded[0]], capped: false };
-    for (let i = 2; i + 1 < loaded.length; i++) {
-      if (loaded[i].hash === loaded[0].hash && loaded[i + 1].hash === loaded[1].hash) {
-        return { frames: loaded.slice(0, i), capped: false };
-      }
-    }
+    const count = detectFrameCount(loaded.map((f) => f.hash));
+    if (count !== null) return { frames: loaded.slice(0, count), capped: false };
   }
   return { frames: loaded.slice(0, maxFrames), capped: true };
 }

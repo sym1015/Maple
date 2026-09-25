@@ -40,6 +40,14 @@ jobs:
           done
           ls -la assets/renders/*/
           grep render-proxy vite.log || true
+      - name: Sprite export end-to-end (real API, headless browser)
+        run: |
+          npm i --no-save --no-audit --no-fund playwright@1
+          npx playwright install --with-deps chromium
+          npx vite --port 5174 --strictPort > vite-e2e.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf -o /dev/null http://localhost:5174/ && break; sleep 1; done
+          set -a; . ./.env; set +a
+          E2E_URL=http://localhost:5174/ E2E_REQUIRE_SERVER_ZIP=1 node scripts/ci/sprite-e2e.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: api-test-report

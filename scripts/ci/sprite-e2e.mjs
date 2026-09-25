@@ -1,0 +1,102 @@
+/**
+ * CI end-to-end check of the sprite exporter against the real API.
+ * Requires: dev server on E2E_URL, playwright installed, data/manifest.json present.
+ *
+ * Exports every action for a fixed character, downloads the ZIP and checks with numbers only:
+ *  - our frame count == server ZIP frame files - 1 (the server repeats frame 0 at the end)
+ *  - equal cell sizes, stable feet row for stand1, PNG count == JSON frames, sheet size
+ */
+import { readFileSync } from "node:fs";
+import { unzipSync } from "fflate";
+import { chromium } from "playwright";
+
+const URL = process.env.E2E_URL ?? "http://localhost:5174/";
+const EQUIPMENT = { hair: 30000, face: 20000, top: 1040000, bottom: 1060000, weapon: 1302000 };
+const manifest = JSON.parse(readFileSync("data/manifest.json", "utf8"));
+const apiBase = process.env.MAPLE_API_BASE.replace(/\/+$/, "");
+let failures = 0;
+const check = (ok, msg) => {
+  console.log(`${ok ? "통과" : "실패"} ${msg}`);
+  if (!ok) failures++;
+};
+
+function pngSize(buf) {
+  return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+}
+
+// Server reference: frame files per action in default/0 of the server ZIP.
+const items = [EQUIPMENT.face, EQUIPMENT.hair, EQUIPMENT.top, EQUIPMENT.bottom, EQUIPMENT.weapon].join(",");
+const serverRes = await fetch(`${apiBase}/${manifest.version}/Character/download/2000/${items}`);
+const serverType = serverRes.headers.get("content-type") ?? "";
+const isZip = serverRes.ok && serverType.startsWith("application/zip");
+const serverZip = isZip ? unzipSync(new Uint8Array(await serverRes.arrayBuffer())) : {};
+if (!isZip) console.log(`서버 ZIP을 받지 못해 프레임 수 비교는 건너뜁니다 (HTTP ${serverRes.status} ${serverType})`);
+if (process.env.E2E_REQUIRE_SERVER_ZIP && !isZip) {
+  console.log("실패 서버 ZIP 필수 모드인데 받지 못했습니다.");
+  process.exit(1);
+}
+const serverFrames = {};
+for (const name of Object.keys(serverZip)) {
+  const m = /^default\/0\/(.+)_(\d+)\.png$/.exec(name);
+  if (m) serverFrames[m[1]] = Math.max(serverFrames[m[1]] ?? 0, Number(m[2]) + 1);
+}
+console.log(`서버 ZIP default/0 동작별 파일 수: ${JSON.stringify(serverFrames)}`);
+
+const browser = await chromium.launch();
+const page = await (await browser.newContext({ acceptDownloads: true })).newPage();
+const errors = [];
+page.on("pageerror", (e) => errors.push(e.message));
+await page.goto(URL);
+await page.evaluate((eq) => localStorage.setItem("maple-character-state", JSON.stringify({ equipment: eq })), EQUIPMENT);
+await page.reload();
+await page.getByRole("button", { name: "스프라이트 시트" }).click();
+const panel = page.getByRole("region", { name: "스프라이트 시트 내보내기" });
+await panel.getByRole("checkbox", { name: "stand1" }).waitFor({ timeout: 60000 });
+const actions = await panel.getByRole("checkbox").evaluateAll((els) =>
+  els.filter((e) => e.closest("div.flex-wrap")).map((e) => e.parentElement.textContent.trim()),
+);
+console.log(`앱이 받은 동작 목록 (${actions.length}): ${actions.join(", ")}`);
+await panel.getByLabel("확대").selectOption("1");
+const started = Date.now();
+await panel.getByRole("button", { name: /^전체: 모든 동작/ }).click();
+await panel.getByRole("button", { name: /ZIP 받기/ }).waitFor({ timeout: 600000 });
+console.log(`전체 내보내기 소요: ${((Date.now() - started) / 1000).toFixed(1)}초`);
+
+const failedText = (await panel.locator("pre").count()) ? await panel.locator("pre").innerText() : "";
+check(!failedText, `실패 프레임 없음 ${failedText.replace(/\s+/g, " ").slice(0, 200)}`);
+
+const [download] = await Promise.all([page.waitForEvent("download"), panel.getByRole("button", { name: /ZIP 받기/ }).click()]);
+const zip = unzipSync(new Uint8Array(readFileSync(await download.path())));
+const ourManifest = JSON.parse(new TextDecoder().decode(zip["CharacterSpriteSheet/manifest.json"]));
+check(ourManifest.animations.length === actions.length, `ZIP 동작 수 ${ourManifest.animations.length} = 목록 ${actions.length}`);
+
+for (const anim of ourManifest.animations) {
+  const dir = `CharacterSpriteSheet/${anim.id}`;
+  const meta = JSON.parse(new TextDecoder().decode(zip[`${dir}/${anim.id}.json`]));
+  const pngs = Object.keys(zip).filter((n) => new RegExp(`^${dir}/\\d+\\.png$`).test(n));
+  const sizes = pngs.map((n) => pngSize(Buffer.from(zip[n])));
+  const sheet = pngSize(Buffer.from(zip[`${dir}/spritesheet.png`]));
+  const expected = serverFrames[anim.id] !== undefined ? serverFrames[anim.id] - 1 : undefined;
+  check(expected === undefined || anim.frameCount === expected, `${anim.id}: 프레임 ${anim.frameCount}장 (서버 ZIP ${serverFrames[anim.id] ?? "없음"}개 - 1)`);
+  check(pngs.length === meta.frames.length && meta.frames.length === anim.frameCount, `${anim.id}: PNG ${pngs.length}개 = JSON 프레임 ${meta.frames.length}개`);
+  check(new Set(sizes.map((s) => `${s.w}x${s.h}`)).size === 1 && sizes[0].w === meta.frameWidth && sizes[0].h === meta.frameHeight, `${anim.id}: 칸 크기 모두 ${meta.frameWidth}x${meta.frameHeight}`);
+  check(sheet.w === meta.columns * meta.frameWidth && sheet.h === meta.rows * meta.frameHeight, `${anim.id}: 시트 ${sheet.w}x${sheet.h} = ${meta.columns}열 x ${meta.rows}행`);
+}
+
+// Feet stability for the standing animation: lowest opaque row and its x-range per frame.
+const feet = await page.evaluate(() => {
+  const art = [...document.querySelectorAll("article")].find((a) => a.querySelector("h3").textContent.startsWith("stand1 "));
+  return [...art.querySelectorAll("button[title] canvas")].map((c) => {
+    const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+    let bottom = -1;
+    for (let y = c.height - 1; y >= 0 && bottom < 0; y--) for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3]) bottom = y;
+    let minX = c.width, maxX = -1;
+    for (let x = 0; x < c.width; x++) if (d[(bottom * c.width + x) * 4 + 3]) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); }
+    return `${bottom}:${minX}-${maxX}`;
+  });
+});
+check(new Set(feet).size === 1, `stand1 발 아래 줄(행:열범위) 프레임별 ${feet.join(" | ")}`);
+check(errors.length === 0, `페이지 오류 없음 ${errors.join(" | ")}`);
+await browser.close();
+console.log(failures ? `실패 ${failures}건` : "모든 검사 통과");
+process.exitCode = failures ? 1 : 0;
