@@ -1,0 +1,83 @@
+.intro-modal-overlay {
+  position: fixed;
+  top: 0px;
+  left: 0px;
+  right: 0px;
+  bottom: 0px;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  z-index: 3;
+}
+
+.intro-modal {
+  border: 3px solid #488AC7;
+  background: #FFF;
+  background-size: cover;
+  overflow: visible;
+  border-radius: 4px;
+  outline: none;
+  padding: 0px 20px 20px 20px;
+  max-width: 640px;
+  min-height: 400px;
+  font-family: "Muli", sans-serif;
+  position: relative;
+}
+
+.intro-modal .modal-desc {
+  font-size: 16px;
+  line-height: 0px;
+}
+
+.intro-modal h1 {
+  font-weight: 200;
+  margin-top: 0px;
+  line-height: 24px;
+  border-bottom: 1px solid rgba(0,0,0,0.2);
+  padding:20px 20px 20px 200px;
+  margin: 0px -20px;
+  background: #488AC7;
+  color: #FFF;
+  text-align: right;
+}
+
+.intro-modal h3 {
+  margin-top: 20px;
+  margin-bottom: 0px;
+  line-height: 24px;
+  font-size: 24px;
+  color: #488AC7;
+}
+
+.intro-modal p {
+  margin-top: 5px;
+  margin-right:75px;
+}
+
+.intro-modal .avatar-box {
+  position: absolute;
+  bottom: 0;
+  right: 25px;
+}
+
+.intro-modal .avatar-box img {
+  transform: translateZ(0) translateY(50%) translateY(-31px) translateX(-20px);
+  image-rendering: pixelated;
+  width: calc(200%);
+}
+
+.modal-blur {
+  filter: blur(13px);
+}
+
+.intro-logo {
+  position: absolute;
+  top: -225px;
+  width: 500px;
+  left: -230px;
+}
+
+.intro-dismiss {
+  cursor: pointer;
+  text-align: left;
+}
