@@ -68,7 +68,7 @@ export default function ItemGrid({ items, selectedIds, onItemClick, loading, emp
                       className="max-h-10 max-w-10 [image-rendering:pixelated]"
                     />
                   ) : (
-                    <span className="text-xs text-slate-300">no icon</span>
+                    <span className="text-[10px] leading-tight text-slate-400">{item.id}</span>
                   )}
                 </span>
                 <span className="line-clamp-2 w-full break-all text-[11px] leading-tight text-slate-600">{item.name}</span>

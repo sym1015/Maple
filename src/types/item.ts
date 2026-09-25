@@ -43,6 +43,8 @@ export interface MapleItem {
 export interface CategorySummary {
   id: DesignerCategory;
   count: number;
+  /** Items whose icon has been downloaded. */
+  withIcon?: number;
 }
 
 /** data/manifest.json */
@@ -50,7 +52,6 @@ export interface AssetManifest {
   version: string;
   generatedAt: string;
   totalItems: number;
-  downloaded: number;
-  skipped?: number;
-  failed: number;
+  iconsOnDisk: number;
+  lastRun: { targets: number; downloaded: number; skipped: number; failed: number };
 }

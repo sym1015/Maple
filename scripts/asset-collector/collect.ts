@@ -71,7 +71,7 @@ async function main() {
   console.log(`equip 아이템 ${list.length}개 수신`);
 
   const unmapped = new Map<string, number>();
-  let items: MapleItem[] = list.map((raw) => {
+  const allItems: MapleItem[] = list.map((raw) => {
     const { category, mapped } = mapCategory(raw.typeInfo);
     if (!mapped) {
       const key = `${raw.typeInfo?.category ?? "?"} / ${raw.typeInfo?.subCategory ?? "?"}`;
@@ -89,6 +89,9 @@ async function main() {
     };
   });
 
+  // Options only choose which icons to download; metadata is always written for every item
+  // so repeated runs with different --category values never hide earlier categories.
+  let items = allItems;
   if (args.ids) items = items.filter((i) => args.ids!.includes(i.id));
   if (args.category) items = items.filter((i) => i.category === args.category);
   if (args.limit) items = items.slice(0, args.limit);
@@ -136,7 +139,6 @@ async function main() {
       stats.downloaded++;
     } else {
       stats.failed++;
-      item.icon = undefined;
       failures.push({
         id: item.id,
         category: item.category,
@@ -153,26 +155,35 @@ async function main() {
   console.log(`\nTotal: ${stats.total}\nDownloaded: ${stats.downloaded}\nSkipped: ${stats.skipped}\nFailed: ${stats.failed}`);
   if (args.dryRun) return;
 
+  // Link every icon that exists on disk (from this or earlier runs).
+  let iconsOnDisk = 0;
+  for (const item of allItems) {
+    if (existsSync(path.join(config.root, "assets", "items", item.category, `${item.id}.png`))) iconsOnDisk++;
+    else item.icon = undefined;
+  }
+
   const dataDir = path.join(config.root, "data");
   const byCategory: Partial<Record<DesignerCategory, Record<string, MapleItem>>> = {};
-  for (const item of items) (byCategory[item.category] ??= {})[item.id] = item;
+  for (const item of allItems) (byCategory[item.category] ??= {})[item.id] = item;
   for (const [category, entries] of Object.entries(byCategory)) {
     writeJson(path.join(dataDir, "items", `${category}.json`), entries);
   }
-  writeJson(path.join(dataDir, "items.json"), Object.fromEntries(items.map((i) => [i.id, i])));
+  writeJson(path.join(dataDir, "items.json"), Object.fromEntries(allItems.map((i) => [i.id, i])));
   writeJson(
     path.join(dataDir, "categories.json"),
-    DESIGNER_CATEGORIES.map((id) => ({ id, count: Object.keys(byCategory[id] ?? {}).length })),
+    DESIGNER_CATEGORIES.map((id) => {
+      const entries = Object.values(byCategory[id] ?? {});
+      return { id, count: entries.length, withIcon: entries.filter((i) => i.icon).length };
+    }),
   );
   writeJson(path.join(dataDir, "raw", "item-category.json"), categoryTree);
   writeJson(path.join(dataDir, "download-failures.json"), failures);
   writeJson(path.join(dataDir, "manifest.json"), {
     version: `${region}/${version}`,
     generatedAt: new Date().toISOString(),
-    totalItems: stats.total,
-    downloaded: stats.downloaded,
-    skipped: stats.skipped,
-    failed: stats.failed,
+    totalItems: allItems.length,
+    iconsOnDisk,
+    lastRun: { targets: stats.total, downloaded: stats.downloaded, skipped: stats.skipped, failed: stats.failed },
   });
   console.log(`data/ 에 JSON 을 저장했습니다.${failures.length ? " 실패 목록: data/download-failures.json" : ""}`);
 }

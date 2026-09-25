@@ -95,7 +95,11 @@ export default function CharacterDesigner() {
   }, []);
   useEffect(() => () => clearTimeout(noticeTimer.current), []);
 
-  const filtered = useMemo(() => items.filter((item) => matches(item, query)), [items, query]);
+  // Items whose icon has been collected come first; the rest are still equippable.
+  const filtered = useMemo(() => {
+    const hits = items.filter((item) => matches(item, query));
+    return [...hits.filter((i) => i.icon), ...hits.filter((i) => !i.icon)];
+  }, [items, query]);
   const selectedIds = useMemo(() => new Set(Object.values(state.equipment) as number[]), [state.equipment]);
 
   const saveCharacter = () => {
