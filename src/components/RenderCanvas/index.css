@@ -1,0 +1,23 @@
+.canvas-bg:not(.dragging) {
+  transition: background-position-x 0.5s, background-position-y 0.5s;
+}
+
+.canvas-bg, .bg-color-picker {
+  background: url('./graphy.png');
+}
+
+.renderables-container {
+  position: relative;
+}
+
+.renderables-container:not(.dragging) {
+  transition: transform 0.5s;
+}
+
+.renderables-container > * {
+  position: absolute;
+}
+
+.canvas-characters svg {
+  pointer-events: none;
+}
