@@ -9,8 +9,62 @@
  *  - download / animated endpoints
  */
 import { createHash } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { inflateRawSync } from "node:zlib";
 import { resolveBase } from "./api";
 import { config } from "./config";
+import { decodePng, opaqueBounds } from "./png";
+
+async function fetchBody(url: string): Promise<Buffer | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(config.timeoutMs) });
+    return res.ok ? Buffer.from(await res.arrayBuffer()) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Hash of decoded pixels (ignores PNG metadata that makes byte hashes differ). */
+function pixelHash(png: Buffer): string {
+  const d = decodePng(png);
+  return createHash("sha1").update(`${d.width}x${d.height}`).update(d.pixels).digest("hex").slice(0, 8);
+}
+
+interface ZipEntry {
+  name: string;
+  method: number;
+  compressed: number;
+  size: number;
+  localOffset: number;
+}
+
+function listZip(buf: Buffer): ZipEntry[] {
+  let eocd = buf.length - 22;
+  while (eocd >= 0 && buf.readUInt32LE(eocd) !== 0x06054b50) eocd--;
+  if (eocd < 0) throw new Error("ZIP 끝 레코드를 찾지 못함");
+  const count = buf.readUInt16LE(eocd + 10);
+  let pos = buf.readUInt32LE(eocd + 16);
+  const entries: ZipEntry[] = [];
+  for (let i = 0; i < count; i++) {
+    const nameLen = buf.readUInt16LE(pos + 28), extraLen = buf.readUInt16LE(pos + 30), commentLen = buf.readUInt16LE(pos + 32);
+    entries.push({
+      name: buf.toString("utf8", pos + 46, pos + 46 + nameLen),
+      method: buf.readUInt16LE(pos + 10),
+      compressed: buf.readUInt32LE(pos + 20),
+      size: buf.readUInt32LE(pos + 24),
+      localOffset: buf.readUInt32LE(pos + 42),
+    });
+    pos += 46 + nameLen + extraLen + commentLen;
+  }
+  return entries;
+}
+
+function readZipEntry(buf: Buffer, e: ZipEntry): Buffer {
+  const start = e.localOffset + 30 + buf.readUInt16LE(e.localOffset + 26) + buf.readUInt16LE(e.localOffset + 28);
+  const data = buf.subarray(start, start + e.compressed);
+  return e.method === 8 ? inflateRawSync(data) : Buffer.from(data);
+}
 
 const SKIN = 2000;
 const ITEMS = "30000,20000,1040000,1060000,1302000";
@@ -108,6 +162,66 @@ async function main() {
     console.log(line(url.replace(root, ""), p));
     console.log(`  headers: ${JSON.stringify(p.headers)}`);
     if (p.text) console.log(`  body: ${p.text.slice(0, 300)}`);
+  }
+
+  await extra(base);
+}
+
+async function extra(base: string) {
+  console.log("\n### 6. Pixel-level frame comparison (first repeat of frame 0 = frame count)");
+  for (const action of ["stand1", "stand2", "walk1", "alert", "swingO1", "jump", "sit", "prone"]) {
+    const hashes: string[] = [];
+    for (let frame = 0; frame <= 9; frame++) {
+      const body = await fetchBody(`${base}/Character/${SKIN}/${ITEMS}/${action}/${frame}`);
+      hashes.push(body ? pixelHash(body) : "ERR");
+    }
+    const period = hashes.findIndex((h, i) => i > 0 && h === hashes[0] && hashes[i + 1] === hashes[1]);
+    console.log(`${action.padEnd(8)} ${hashes.join(" ")}  → 반복 주기: ${period > 0 ? period : "10 이상 또는 판단 불가"}`);
+  }
+
+  console.log("\n### 7. Opaque bounds per positioning variant (is the anchor fixed inside the image?)");
+  for (const variant of ["", "feetCenter/", "navelCenter/", "center/"]) {
+    for (const [action, frames] of [["stand1", 3], ["walk1", 4], ["swingO1", 3]] as const) {
+      for (let frame = 0; frame < frames; frame++) {
+        const body = await fetchBody(`${base}/Character/${variant}${SKIN}/${ITEMS}/${action}/${frame}`);
+        if (!body) {
+          console.log(`${variant || "(plain)/"}${action}/${frame}: 실패`);
+          continue;
+        }
+        const d = decodePng(body);
+        const b = opaqueBounds(d);
+        console.log(
+          `${(variant || "(plain)/") + action + "/" + frame}`.padEnd(26) +
+            ` size=${d.width}x${d.height} center=(${d.width / 2},${d.height / 2}) opaque x=${b?.minX}..${b?.maxX} y=${b?.minY}..${b?.maxY}`,
+        );
+      }
+    }
+  }
+
+  console.log("\n### 8. Server sprite sheet ZIP contents");
+  const zip = await fetchBody(`${base}/Character/download/${SKIN}/${ITEMS}`);
+  if (!zip) return console.log("ZIP 다운로드 실패");
+  const outDir = path.join(config.root, "data", "raw");
+  mkdirSync(outDir, { recursive: true });
+  writeFileSync(path.join(outDir, "sprite-sample.zip"), zip);
+  const entries = listZip(zip);
+  console.log(`entries: ${entries.length}, total uncompressed: ${entries.reduce((n, e) => n + e.size, 0)}B`);
+  const dirs = new Map<string, number>();
+  for (const e of entries) {
+    const dir = e.name.includes("/") ? e.name.slice(0, e.name.lastIndexOf("/")) : "(root)";
+    dirs.set(dir, (dirs.get(dir) ?? 0) + 1);
+  }
+  console.log("files per folder:");
+  for (const [dir, n] of [...dirs].sort()) console.log(`  ${dir.padEnd(50)} ${n}`);
+  console.log("first 40 entries:");
+  for (const e of entries.slice(0, 40)) console.log(`  ${e.name}  (${e.size}B)`);
+  for (const e of entries.filter((x) => /\.(json|txt|xml|csv)$/i.test(x.name)).slice(0, 5)) {
+    console.log(`--- ${e.name}\n${readZipEntry(zip, e).toString("utf8").slice(0, 2000)}`);
+  }
+  const firstPng = entries.find((e) => e.name.toLowerCase().endsWith(".png"));
+  if (firstPng) {
+    const d = decodePng(readZipEntry(zip, firstPng));
+    console.log(`first PNG ${firstPng.name}: ${d.width}x${d.height} opaque=${JSON.stringify(opaqueBounds(d))}`);
   }
 }
 
