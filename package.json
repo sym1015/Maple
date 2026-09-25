@@ -11,7 +11,8 @@
     "assets:test": "tsx scripts/asset-collector/test-api.ts",
     "assets:collect": "tsx scripts/asset-collector/collect.ts",
     "assets:typecheck": "tsc -p scripts/tsconfig.json",
-    "assets:inspect": "tsx scripts/asset-collector/inspect-sprites.ts"
+    "assets:inspect": "tsx scripts/asset-collector/inspect-sprites.ts",
+    "assets:inspect-animation": "tsx scripts/asset-collector/inspect-animation.ts"
   },
   "dependencies": {
     "react": "^19.3.0",
