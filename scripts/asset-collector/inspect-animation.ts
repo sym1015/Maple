@@ -218,6 +218,24 @@ async function extra(base: string) {
   for (const e of entries.filter((x) => /\.(json|txt|xml|csv)$/i.test(x.name)).slice(0, 5)) {
     console.log(`--- ${e.name}\n${readZipEntry(zip, e).toString("utf8").slice(0, 2000)}`);
   }
+  const defaults = entries.filter((e) => e.name.startsWith("default/0/")).map((e) => e.name.slice(10)).sort();
+  console.log(`default/0 files (${defaults.length}): ${defaults.join(" ")}`);
+
+  console.log("\n### 9. ZIP frames vs render frames (pixel hashes)");
+  for (const action of ["stand1", "walk1", "alert", "swingO1", "jump"]) {
+    const zipFrames = entries
+      .filter((e) => e.name.startsWith(`default/0/${action}_`))
+      .sort((a, b) => Number(a.name.split("_").pop()!.split(".")[0]) - Number(b.name.split("_").pop()!.split(".")[0]));
+    const zipHashes = zipFrames.map((e) => `${e.name.split("/").pop()}=${pixelHash(readZipEntry(zip, e))}`);
+    const renderHashes: string[] = [];
+    for (let frame = 0; frame < Math.max(zipFrames.length, 1) + 1; frame++) {
+      const body = await fetchBody(`${base}/Character/${SKIN}/${ITEMS}/${action}/${frame}`);
+      renderHashes.push(`${frame}=${body ? pixelHash(body) : "ERR"}`);
+    }
+    console.log(`${action.padEnd(8)} zip:    ${zipHashes.join(" ")}`);
+    console.log(`${"".padEnd(8)} render: ${renderHashes.join(" ")}`);
+  }
+
   const firstPng = entries.find((e) => e.name.toLowerCase().endsWith(".png"));
   if (firstPng) {
     const d = decodePng(readZipEntry(zip, firstPng));
