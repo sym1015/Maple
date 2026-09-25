@@ -10,6 +10,7 @@ import type { CategorySummary, DesignerCategory, MapleItem } from "../../types/i
 import CategoryList from "../CategoryList/CategoryList";
 import CharacterPreview from "../CharacterPreview/CharacterPreview";
 import ItemGrid from "../ItemGrid/ItemGrid";
+import Randomizer from "../Randomizer/Randomizer";
 import SearchBar from "../SearchBar/SearchBar";
 import SpriteExporter from "../SpriteExporter/SpriteExporter";
 
@@ -180,6 +181,12 @@ export default function CharacterDesigner() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold text-slate-800">Maple Character Designer</h1>
         <div className="flex flex-wrap gap-2">
+          <Randomizer
+            equipment={state.equipment}
+            onApply={(equipment) => replace({ equipment })}
+            onMessage={flash}
+            disabled={!categories}
+          />
           <ToolbarButton onClick={confirmReset}>초기화</ToolbarButton>
           <ToolbarButton onClick={saveCharacter}>저장</ToolbarButton>
           <ToolbarButton onClick={loadCharacter}>불러오기</ToolbarButton>
