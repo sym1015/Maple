@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       # CI=true would turn lint warnings into build errors in react-scripts
       - run: npm run build
         env:
