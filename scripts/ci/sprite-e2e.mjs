@@ -6,9 +6,11 @@
  *  - our frame count == server ZIP frame files - 1 (the server repeats frame 0 at the end)
  *  - equal cell sizes, stable feet row for stand1, PNG count == JSON frames, sheet size
  */
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { unzipSync } from "fflate";
 import { chromium } from "playwright";
+import { decodePng } from "../asset-collector/png.ts";
 
 const URL = process.env.E2E_URL ?? "http://localhost:5174/";
 const EQUIPMENT = { hair: 30000, face: 20000, top: 1040000, bottom: 1060000, weapon: 1302000 };
@@ -31,16 +33,28 @@ const serverType = serverRes.headers.get("content-type") ?? "";
 const isZip = serverRes.ok && serverType.startsWith("application/zip");
 const serverZip = isZip ? unzipSync(new Uint8Array(await serverRes.arrayBuffer())) : {};
 if (!isZip) console.log(`서버 ZIP을 받지 못해 프레임 수 비교는 건너뜁니다 (HTTP ${serverRes.status} ${serverType})`);
-if (process.env.E2E_REQUIRE_SERVER_ZIP && !isZip) {
-  console.log("실패 서버 ZIP 필수 모드인데 받지 못했습니다.");
-  process.exit(1);
-}
+
 const serverFrames = {};
 for (const name of Object.keys(serverZip)) {
   const m = /^default\/0\/(.+)_(\d+)\.png$/.exec(name);
   if (m) serverFrames[m[1]] = Math.max(serverFrames[m[1]] ?? 0, Number(m[2]) + 1);
 }
 console.log(`서버 ZIP default/0 동작별 파일 수: ${JSON.stringify(serverFrames)}`);
+
+// The server ZIP turned out to be incomplete from run to run, so it is only informational.
+async function nodeFrameCount(action) {
+  const hashes = [];
+  for (let frame = 0; frame < 64; frame++) {
+    const r = await fetch(`${apiBase}/${manifest.version}/Character/feetCenter/2000/${items}/${action}/${frame}`);
+    const d = decodePng(Buffer.from(await r.arrayBuffer()));
+    hashes.push(createHash("sha1").update(`${d.width}x${d.height}`).update(d.pixels).digest("hex"));
+    for (let p = 1; p <= hashes.length; p++) {
+      if (hashes.length < p + Math.max(p, 3)) break;
+      if (hashes.every((h, i) => h === hashes[i % p])) return p;
+    }
+  }
+  return -1;
+}
 
 const browser = await chromium.launch();
 const page = await (await browser.newContext({ acceptDownloads: true })).newPage();
@@ -76,8 +90,9 @@ for (const anim of ourManifest.animations) {
   const pngs = Object.keys(zip).filter((n) => new RegExp(`^${dir}/\\d+\\.png$`).test(n));
   const sizes = pngs.map((n) => pngSize(Buffer.from(zip[n])));
   const sheet = pngSize(Buffer.from(zip[`${dir}/spritesheet.png`]));
-  const expected = serverFrames[anim.id] !== undefined ? serverFrames[anim.id] - 1 : undefined;
-  check(expected === undefined || anim.frameCount === expected, `${anim.id}: 프레임 ${anim.frameCount}장 (서버 ZIP ${serverFrames[anim.id] ?? "없음"}개 - 1)`);
+  // Independent reference: request frames directly and find the pixel repeat period in node.
+  const expected = await nodeFrameCount(anim.id);
+  check(anim.frameCount === expected, `${anim.id}: 프레임 ${anim.frameCount}장 (node 직접 확인 ${expected}장, 참고: 서버 ZIP ${serverFrames[anim.id] ?? "없음"}개)`);
   check(pngs.length === meta.frames.length && meta.frames.length === anim.frameCount, `${anim.id}: PNG ${pngs.length}개 = JSON 프레임 ${meta.frames.length}개`);
   check(new Set(sizes.map((s) => `${s.w}x${s.h}`)).size === 1 && sizes[0].w === meta.frameWidth && sizes[0].h === meta.frameHeight, `${anim.id}: 칸 크기 모두 ${meta.frameWidth}x${meta.frameHeight}`);
   check(sheet.w === meta.columns * meta.frameWidth && sheet.h === meta.rows * meta.frameHeight, `${anim.id}: 시트 ${sheet.w}x${sheet.h} = ${meta.columns}열 x ${meta.rows}행`);

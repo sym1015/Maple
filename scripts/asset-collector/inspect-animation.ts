@@ -236,6 +236,38 @@ async function extra(base: string) {
     console.log(`${"".padEnd(8)} render: ${renderHashes.join(" ")}`);
   }
 
+  console.log("\n### 10. Feet row vs anchor (stand1/walk1): face only (bare body) vs full outfit");
+  for (const items of ["20000", ITEMS]) {
+    for (const variant of ["feetCenter/", "center/", "navelCenter/"]) {
+      for (const [action, frames] of [["stand1", 3], ["walk1", 4]] as const) {
+        const rows: string[] = [];
+        for (let frame = 0; frame < frames; frame++) {
+          const body = await fetchBody(`${base}/Character/${variant}${SKIN}/${items}/${action}/${frame}`);
+          if (!body) {
+            rows.push("ERR");
+            continue;
+          }
+          const d = decodePng(body);
+          const b = opaqueBounds(d);
+          if (!b) {
+            rows.push("empty");
+            continue;
+          }
+          let minX = d.width, maxX = -1;
+          for (let x = 0; x < d.width; x++) {
+            if (d.pixels[(b.maxY * d.width + x) * 4 + 3] > 0) {
+              minX = Math.min(minX, x);
+              maxX = Math.max(maxX, x);
+            }
+          }
+          const ax = Math.floor(d.width / 2), ay = Math.floor(d.height / 2);
+          rows.push(`${d.width}x${d.height} 발줄y-ay=${b.maxY - ay} 발x(floor기준)=${minX - ax}..${maxX - ax} 전체x=${b.minX - ax}..${b.maxX - ax}`);
+        }
+        console.log(`[${items === "20000" ? "얼굴만" : "전체착용"}] ${variant}${action}: ${rows.join(" | ")}`);
+      }
+    }
+  }
+
   const firstPng = entries.find((e) => e.name.toLowerCase().endsWith(".png"));
   if (firstPng) {
     const d = decodePng(readZipEntry(zip, firstPng));
