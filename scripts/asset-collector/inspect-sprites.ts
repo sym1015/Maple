@@ -66,8 +66,16 @@ async function main() {
   if (Array.isArray(zmap)) console.log(`zmap: array(${zmap.length}) → ${JSON.stringify(zmap)}`);
   else if (zmap) console.log(`zmap: ${JSON.stringify(redact(zmap)).slice(0, 1500)}`);
 
-  // Skin: body 2000 and head 12000 are the ids the legacy app used as default skin.
-  for (const id of [2000, 12000, ...extraIds]) describeItem(await show(`item ${id}`, `${base}/item/${id}`));
+  for (const id of extraIds) describeItem(await show(`item ${id}`, `${base}/item/${id}`));
+
+  // Skin (body/head) is not served by /item; probe the Character endpoints instead.
+  const skins = await show("Character skin list", `${base}/Character`);
+  if (skins) console.log(`skins: ${JSON.stringify(redact(skins)).slice(0, 600)}`);
+  for (const items of ["", "30000,20000", "30000%2C20000"]) {
+    const path = items ? `detailed/2000/${items}/stand1/0` : "detailed/2000";
+    const detail = await show(`Character ${path}`, `${base}/Character/${path}`);
+    if (detail !== undefined) console.log(`detail (redacted): ${JSON.stringify(redact(detail), null, 1).slice(0, 5000)}`);
+  }
 
   const list = await request(`${base}/item/category/equip`);
   const items = JSON.parse(list.body.toString("utf8")) as ApiItemSummary[];
