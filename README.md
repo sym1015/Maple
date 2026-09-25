@@ -42,6 +42,8 @@ https://sym1015.github.io/Maple/ 에 올립니다. 처음 한 번만 아래 설�
 - `.npmrc` 추가 (`legacy-peer-deps=true`): 최신 npm에서 React 15 관련 peer 의존성 충돌로 설치가 실패하는 문제 해결
 - `start`/`build` 스크립트에 `--openssl-legacy-provider` 추가: Node 17+ 에서 react-scripts 3 빌드가 실패하는 문제 해결
 - Dockerfile 베이스 이미지 `node:8` → `node:18`
+- `package-lock.json` 커밋: 모든 라이브러리를 원본이 마지막으로 업데이트된 2019년 10월 버전으로 고정
+  (최신 `react-notifications`가 React 16 이상을 요구해서 화면이 하얗게 나오던 문제 해결)
 
 ## 코드 구조
 
