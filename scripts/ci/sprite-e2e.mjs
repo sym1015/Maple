@@ -98,19 +98,29 @@ for (const anim of ourManifest.animations) {
   check(sheet.w === meta.columns * meta.frameWidth && sheet.h === meta.rows * meta.frameHeight, `${anim.id}: 시트 ${sheet.w}x${sheet.h} = ${meta.columns}열 x ${meta.rows}행`);
 }
 
-// Feet stability for the standing animation: lowest opaque row and its x-range per frame.
-const feet = await page.evaluate(() => {
-  const art = [...document.querySelectorAll("article")].find((a) => a.querySelector("h3").textContent.startsWith("stand1 "));
-  return [...art.querySelectorAll("button[title] canvas")].map((c) => {
-    const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
-    let bottom = -1;
-    for (let y = c.height - 1; y >= 0 && bottom < 0; y--) for (let x = 0; x < c.width; x++) if (d[(y * c.width + x) * 4 + 3]) bottom = y;
-    let minX = c.width, maxX = -1;
-    for (let x = 0; x < c.width; x++) if (d[(bottom * c.width + x) * 4 + 3]) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); }
-    return `${bottom}:${minX}-${maxX}`;
-  });
-});
-check(new Set(feet).size === 1, `stand1 발 아래 줄(행:열범위) 프레임별 ${feet.join(" | ")}`);
+// Anchor fidelity: relative to the anchor, the lowest opaque row and its x-range in our
+// exported frames must equal those in the raw feetCenter frames from the API. (Frames may
+// legitimately sway; e.g. stand1 frame 2 sits 1px right of frames 0-1 in the API itself.)
+function feetRow(png, ax, ay) {
+  const d = decodePng(Buffer.from(png));
+  let bottom = -1;
+  for (let y = d.height - 1; y >= 0 && bottom < 0; y--) for (let x = 0; x < d.width; x++) if (d.pixels[(y * d.width + x) * 4 + 3]) bottom = y;
+  let minX = d.width, maxX = -1;
+  for (let x = 0; x < d.width; x++) if (d.pixels[(bottom * d.width + x) * 4 + 3]) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); }
+  return `y${bottom - ay}:x${minX - ax}..${maxX - ax}`;
+}
+for (const action of ["stand1", "walk1"]) {
+  const dir = `CharacterSpriteSheet/${action}`;
+  const meta = JSON.parse(new TextDecoder().decode(zip[`${dir}/${action}.json`]));
+  const ours = [], server = [];
+  for (let i = 0; i < meta.frames.length; i++) {
+    ours.push(feetRow(zip[`${dir}/${i}.png`], meta.origin.x, meta.origin.y));
+    const raw = Buffer.from(await (await fetch(`${apiBase}/${manifest.version}/Character/feetCenter/2000/${items}/${action}/${i}`)).arrayBuffer());
+    const d = decodePng(raw);
+    server.push(feetRow(raw, Math.floor(d.width / 2), Math.floor(d.height / 2)));
+  }
+  check(ours.join(" ") === server.join(" "), `${action} 기준점 대비 발 위치 = 서버 원본 (앱 ${ours.join(" | ")} / 서버 ${server.join(" | ")})`);
+}
 check(errors.length === 0, `페이지 오류 없음 ${errors.join(" | ")}`);
 await browser.close();
 console.log(failures ? `실패 ${failures}건` : "모든 검사 통과");
