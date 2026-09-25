@@ -170,12 +170,16 @@ async function main() {
     console.log("data/ 목록을 먼저 저장했습니다. 다운로드 중에도 500개마다 갱신됩니다.");
   }
 
-  await runPool(items, config.concurrency, config.delayMs, async (item) => {
-    const file = path.join(config.root, "assets", "items", item.category, `${item.id}.png`);
-    if (existsSync(file)) {
-      stats.skipped++;
-      return;
-    }
+  // Skip icons that already exist up front, so resuming does not wait out the request
+  // delay once per existing file (tens of thousands of files = tens of minutes of silence).
+  const iconFile = (item: MapleItem) => path.join(config.root, "assets", "items", item.category, `${item.id}.png`);
+  const pending = items.filter((item) => !existsSync(iconFile(item)));
+  stats.skipped = items.length - pending.length;
+  console.log(`이미 받은 아이콘 ${stats.skipped}개는 건너뜁니다. 새로 받을 아이콘: ${pending.length}개`);
+
+  const startedAt = Date.now();
+  await runPool(pending, config.concurrency, config.delayMs, async (item) => {
+    const file = iconFile(item);
     const url = `${base}/item/${item.id}/icon`;
     if (args.dryRun) {
       console.log(`  [dry-run] ${url} → ${path.relative(config.root, file)}`);
@@ -197,8 +201,14 @@ async function main() {
         attempts: res.attempts,
       });
     }
-    const done = stats.downloaded + stats.skipped + stats.failed;
-    if (done % 100 === 0) console.log(`  진행 ${done}/${stats.total}`);
+    const done = stats.downloaded + stats.failed;
+    if (done % 100 === 0 || done === pending.length) {
+      const elapsed = (Date.now() - startedAt) / 1000;
+      const remainMin = Math.ceil(((elapsed / done) * (pending.length - done)) / 60);
+      console.log(
+        `  진행 ${done}/${pending.length} (${Math.floor((done / pending.length) * 100)}%) · 실패 ${stats.failed} · 남은 시간 약 ${remainMin}분`,
+      );
+    }
     if (!args.dryRun && done % WRITE_EVERY === 0) writeData(false);
   });
 
