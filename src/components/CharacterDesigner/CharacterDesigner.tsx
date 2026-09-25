@@ -11,6 +11,7 @@ import CategoryList from "../CategoryList/CategoryList";
 import CharacterPreview from "../CharacterPreview/CharacterPreview";
 import ItemGrid from "../ItemGrid/ItemGrid";
 import SearchBar from "../SearchBar/SearchBar";
+import SpriteExporter from "../SpriteExporter/SpriteExporter";
 
 const SAVED_KEY = "maple-character-saved";
 
@@ -44,6 +45,7 @@ export default function CharacterDesigner() {
   const [action, setAction] = useState<CharacterAction>(DEFAULT_ACTION);
   const [actions, setActions] = useState<string[]>([]);
   const [pngScale, setPngScale] = useState(2);
+  const [showSprites, setShowSprites] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -200,6 +202,9 @@ export default function CharacterDesigner() {
               ))}
             </select>
           </span>
+          <ToolbarButton onClick={() => setShowSprites((v) => !v)} disabled={!renderPath} aria-expanded={showSprites}>
+            스프라이트 시트
+          </ToolbarButton>
           <input
             ref={fileInput}
             type="file"
@@ -247,6 +252,8 @@ export default function CharacterDesigner() {
               />
             </div>
           </div>
+
+          {showSprites && <SpriteExporter equipment={state.equipment} actions={actions} />}
 
           <section className="flex flex-col gap-3 rounded-xl bg-slate-50 p-4">
             <div className="flex items-center gap-3">

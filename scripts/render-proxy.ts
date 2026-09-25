@@ -3,6 +3,8 @@
  *
  *   GET /render/character/{skinId}/{itemIds}/{action}/{frame}.png
  *     → ${MAPLE_API_BASE}/${region}/${version}/Character/{skinId}/{itemIds}/{action}/{frame}
+ *   GET /render/character/{center|navelCenter|feetCenter}/{skinId}/{itemIds}/{action}/{frame}.png
+ *     → …/Character/{variant}/{skinId}/{itemIds}/{action}/{frame}
  *   GET /render/actions/{itemIds}.json
  *     → ${MAPLE_API_BASE}/${region}/${version}/Character/actions/{itemIds}
  *     (verified: JSON array of action names; 500 when no item ids are given)
@@ -22,7 +24,8 @@ import path from "node:path";
 import type { Connect, Plugin } from "vite";
 
 const ACTIONS_ROUTE = /^\/render\/actions\/(\d{1,8}(?:,\d{1,8}){0,39})\.json$/;
-const ROUTE = /^\/render\/character\/(\d{1,6})\/(\d{1,8}(?:,\d{1,8}){0,39})?\/([A-Za-z][A-Za-z0-9]{0,23})\/(\d{1,2})\.png$/;
+// Optional positioning variant (verified: center, navelCenter, feetCenter return image/png).
+const ROUTE = /^\/render\/character\/(?:(center|navelCenter|feetCenter)\/)?(\d{1,6})\/(\d{1,8}(?:,\d{1,8}){0,39})?\/([A-Za-z][A-Za-z0-9]{0,23})\/(\d{1,2})\.png$/;
 const MAX_PARALLEL = 2;
 const TIMEOUT_MS = 30_000;
 
@@ -80,9 +83,16 @@ export function renderProxy({ root, apiBase }: Options): Plugin {
       cacheFile = path.join(cacheDir, `actions_${items.replaceAll(",", "-")}.json`);
       expectType = "application/json";
     } else {
-      const [, skin, items = "", action, frame] = m!;
-      upstream = items ? `${api}/${skin}/${items}/${action}/${frame}` : `${api}/${skin}`;
-      cacheFile = path.join(cacheDir, `${skin}_${items.replaceAll(",", "-") || "base"}_${action}_${frame}.png`);
+      const [, variant, skin, items = "", action, frame] = m!;
+      // Positioned renders were only verified with items; the base skin URL has no variant form.
+      if (variant && !items) return send(res, 400, "기준점 렌더에는 아이템이 하나 이상 필요합니다.");
+      upstream = items
+        ? `${api}/${variant ? `${variant}/` : ""}${skin}/${items}/${action}/${frame}`
+        : `${api}/${skin}`;
+      cacheFile = path.join(
+        cacheDir,
+        `${variant ? `${variant}_` : ""}${skin}_${items.replaceAll(",", "-") || "base"}_${action}_${frame}.png`,
+      );
       expectType = "image/png";
     }
 

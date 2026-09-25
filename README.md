@@ -37,6 +37,7 @@ npm run assets:collect -- --category=hat --limit=50
 | `npm run typecheck` | 앱 타입 검사 |
 | `npm run assets:test` | API 엔드포인트 점검 (URL, HTTP 상태, 응답 필드, 샘플 출력) |
 | `npm run assets:inspect` | 부품 이미지·레이어 순서(zmap)·캐릭터 렌더 주소의 실제 구조 출력 |
+| `npm run assets:inspect-animation` | 동작 목록, 동작별 프레임 수, 기준점, 서버 ZIP 구조 확인 |
 | `npm run assets:collect` | 아이템 메타데이터·아이콘 수집 |
 | `npm run assets:typecheck` | 수집기 타입 검사 |
 
@@ -144,6 +145,40 @@ interface CharacterState {
 
 피부(`body`)는 목록에 머리 ID(예: 12000)로 나오며, 렌더 주소에는 `머리 ID − 10000`(예: 2000)을 스킨 ID로 씁니다.
 
+## 스프라이트 시트 내보내기
+
+위쪽 **스프라이트 시트** 버튼을 누르면 내보내기 패널이 열립니다.
+
+1. 동작을 고릅니다. 목록은 서버가 지금 입은 장비로 가능하다고 알려 준 동작만 나옵니다(`Character/actions/{아이템들}`).
+2. 확대(기본 4배), 좌우 반전, 열·행 수, 프레임 크기, 여백, 투명 배경, 기준점(기본 **발**), FPS를 정합니다.
+3. **최소: 선택한 동작 만들기** 또는 **전체: 모든 동작 만들기**를 누릅니다.
+4. 프레임 미리보기, 시트 미리보기, 시트 재생으로 확인한 뒤 **PNG 받기 / JSON 받기 / ZIP 받기**를 누릅니다.
+
+ZIP 구조:
+
+```text
+CharacterSpriteSheet/
+├── manifest.json          캐릭터 해시, 장비, 설정, 동작 목록, 건너뛴 동작, failedFrames
+├── stand1/
+│   ├── 0.png 1.png 2.png  같은 크기의 프레임 (발 위치 고정)
+│   ├── spritesheet.png
+│   └── stand1.json        frameWidth/Height, columns, rows, origin, frames[{index,x,y,width,height,duration}]
+└── walk1/ …
+```
+
+**실제 API로 확인한 동작 방식** (`npm run assets:inspect-animation`):
+
+- 마지막 프레임을 넘겨 요청해도 오류가 나지 않고 처음부터 다시 돌려줍니다. 그래서 받은 그림을 **픽셀로 비교**해
+  0번·1번 프레임이 다시 나오는 지점에서 멈춥니다. (stand1 3장, walk1 4장, jump 1장 등)
+- 서버 자체 ZIP(`Character/download/…`)은 각 동작 끝에 첫 프레임을 한 번 더 넣습니다. 이 앱은 중복 없이 실제 프레임만 씁니다.
+- `feetCenter` / `navelCenter` / `center` 렌더는 기준점을 (가로÷2 내림, 세로÷2 내림)에 둡니다.
+  모든 프레임의 기준점을 칸의 같은 위치에 맞추고, 가장 큰 프레임이 들어가는 크기로 칸을 통일합니다.
+- 확대·반전은 캔버스에서 실제 픽셀로 반영합니다(부드럽게 처리 안 함). 배경은 기본 투명입니다.
+- 프레임은 한 번에 3장씩 받고, 실패하면 1초·2초·4초 간격으로 3번 다시 시도합니다.
+  그래도 실패한 동작은 건너뛰고 `failedFrames`에 기록합니다.
+- 취소하면 진행 중인 요청을 멈추고 결과를 저장하지 않습니다.
+- 프레임 시간 정보는 API가 주지 않아서 `duration`은 FPS로 계산합니다(12 FPS → 83ms).
+
 ## 폴더 구조
 
 ```text
@@ -151,7 +186,9 @@ src/
   components/  CharacterDesigner, CharacterPreview, CategoryList, ItemGrid, SearchBar
   hooks/       useCharacter.ts
   lib/         mapleApi.ts (로컬 데이터 로더), storage.ts, categories.ts,
-               characterRender.ts (렌더 주소), renderer.ts (캔버스 합성·PNG)
+               characterRender.ts (렌더 주소, 동작 목록), renderer.ts (캔버스 합성·PNG)
+  lib/sprite/  frames.ts (프레임 받기·판정), sheet.ts (시트 배치), exporter.ts (진행·ZIP)
+  components/SpriteExporter/  내보내기 패널, AnimationPlayer
   types/       item.ts, character.ts
 scripts/asset-collector/
   config.ts, http.ts (타임아웃·재시도), pool.ts (동시성 제한), api.ts,
