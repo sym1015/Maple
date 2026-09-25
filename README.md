@@ -3,8 +3,8 @@
 웹에서 메이플스토리 스타일 2D 캐릭터를 꾸며 보는 개인용 코디 도구입니다.
 아이템 데이터는 `maplestory.io` API에서 **내 컴퓨터로 직접 수집**해서 사용합니다.
 
-> 진행 상황: Step 1~8 완료 (에셋 수집기, 아이템 목록, 캐릭터 상태, 저장/불러오기).
-> 캐릭터 레이어 렌더링과 PNG 내보내기는 다음 단계에서 추가됩니다.
+> 진행 상황: Step 1~11 완료 (에셋 수집기, 아이템 목록, 캐릭터 상태, 저장/불러오기,
+> 캐릭터 미리보기, PNG 저장). 전체 검색, 성능 최적화, 테스트 정리는 다음 단계입니다.
 
 ## 요구 사항
 
@@ -36,6 +36,7 @@ npm run assets:collect -- --category=hat --limit=50
 | `npm run preview` | 빌드 결과 미리보기 |
 | `npm run typecheck` | 앱 타입 검사 |
 | `npm run assets:test` | API 엔드포인트 점검 (URL, HTTP 상태, 응답 필드, 샘플 출력) |
+| `npm run assets:inspect` | 부품 이미지·레이어 순서(zmap)·캐릭터 렌더 주소의 실제 구조 출력 |
 | `npm run assets:collect` | 아이템 메타데이터·아이콘 수집 |
 | `npm run assets:typecheck` | 수집기 타입 검사 |
 
@@ -66,6 +67,7 @@ npm run assets:collect -- --category=hat --limit=50
 
 ```text
 assets/items/{category}/{itemId}.png   아이콘 (이미 있으면 다시 받지 않음)
+assets/renders/{지역-버전}/…png         캐릭터 렌더 캐시
 data/items/{category}.json             카테고리별 아이템 (화면에서 필요할 때만 불러옴)
 data/items.json                        전체 아이템
 data/categories.json                   카테고리별 개수
@@ -116,17 +118,45 @@ interface CharacterState {
 { "version": 1, "equipment": { "hair": 30000, "face": 20000, "weapon": 1302000 } }
 ```
 
+## 캐릭터 미리보기와 PNG 저장
+
+캐릭터 그림은 API 서버가 게임의 레이어 순서(zmap)대로 합성한 이미지를 씁니다.
+
+```text
+브라우저 → /render/character/{스킨}/{아이템,…}/{동작}/{프레임}.png   (내 PC의 개발 서버)
+         → ${MAPLE_API_BASE}/{지역}/{버전}/Character/{스킨}/{아이템,…}/{동작}/{프레임}
+```
+
+- **왜 중계하나요?** API 응답에 CORS 허용 헤더가 없어서 브라우저가 직접 받아 PNG로 저장할 수 없습니다.
+  개발 서버(`npm run dev`, `npm run preview`)가 대신 받아서 같은 주소로 전달합니다.
+- 한 번 받은 조합은 `assets/renders/`에 저장해 두고 다시 요청하지 않습니다 (git 제외).
+- 지역·버전은 수집 때 만든 `data/manifest.json`을 따르므로, 수집한 아이템과 항상 같은 버전으로 그려집니다.
+- 숫자로 된 아이템 ID와 영문 동작 이름만 받습니다. 다른 주소로 요청을 보내는 데 쓸 수 없습니다.
+- 동시에 API로 보내는 요청은 2개까지이고, 같은 요청이 겹치면 한 번만 보냅니다.
+- 클릭을 빠르게 이어서 해도, 마지막 상태로 0.3초 뒤에 한 번만 그립니다.
+- **PNG 저장**은 이 이미지를 배율 1x/2x/4x로 키워 저장합니다.
+- **GitHub Pages 같은 정적 사이트에서는 중계 서버가 없어 캐릭터 그림이 나오지 않습니다.** 내 PC에서 `npm run dev`로 사용하세요.
+
+**직접 레이어를 겹치지 않는 이유:** 아이템(헤어·얼굴·옷·무기)은 `/item/{id}`에 부품 이미지와 기준점이
+있지만, 몸통·머리(스킨)는 `/item/2000`, `/item/12000`이 빈 응답을 줘서 기준점(`navel`, `neck`, `brow`)을
+얻을 수 없습니다(`npm run assets:inspect`로 확인). 좌표를 추측하지 않으려고 서버 합성을 씁니다.
+`src/lib/renderer.ts`는 레이어 목록을 받아 그리는 구조라, 스킨 데이터를 구하면 직접 합성으로 바꿀 수 있습니다.
+
+피부(`body`)는 목록에 머리 ID(예: 12000)로 나오며, 렌더 주소에는 `머리 ID − 10000`(예: 2000)을 스킨 ID로 씁니다.
+
 ## 폴더 구조
 
 ```text
 src/
   components/  CharacterDesigner, CharacterPreview, CategoryList, ItemGrid, SearchBar
   hooks/       useCharacter.ts
-  lib/         mapleApi.ts (로컬 데이터 로더), storage.ts, categories.ts
+  lib/         mapleApi.ts (로컬 데이터 로더), storage.ts, categories.ts,
+               characterRender.ts (렌더 주소), renderer.ts (캔버스 합성·PNG)
   types/       item.ts, character.ts
 scripts/asset-collector/
   config.ts, http.ts (타임아웃·재시도), pool.ts (동시성 제한), api.ts,
-  category-map.ts, collect.ts, test-api.ts
+  category-map.ts, collect.ts, test-api.ts, inspect-sprites.ts
+scripts/render-proxy.ts   개발 서버용 캐릭터 렌더 중계 + 캐시
 ```
 
 ## 권리 및 주의 사항

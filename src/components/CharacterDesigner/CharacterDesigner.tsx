@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCharacter } from "../../hooks/useCharacter";
 import { CATEGORY_LABELS, SLOT_TO_CATEGORY } from "../../lib/categories";
-import { loadCategories, loadCategoryItems } from "../../lib/mapleApi";
+import { characterRenderPath, type CharacterAction } from "../../lib/characterRender";
+import { assetUrl, loadCategories, loadCategoryItems } from "../../lib/mapleApi";
+import { exportPNG } from "../../lib/renderer";
 import { downloadBlob, parseCharacterFile, sanitizeEquipment, toCharacterFile } from "../../lib/storage";
 import type { EquipmentSlot } from "../../types/character";
 import type { CategorySummary, DesignerCategory, MapleItem } from "../../types/item";
@@ -39,6 +41,8 @@ export default function CharacterDesigner() {
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [names, setNames] = useState<ReadonlyMap<number, string>>(new Map());
+  const [action, setAction] = useState<CharacterAction>("stand1");
+  const [pngScale, setPngScale] = useState(2);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -128,6 +132,21 @@ export default function CharacterDesigner() {
     }
   };
 
+  const renderPath = categories ? characterRenderPath(state.equipment, action) : null;
+
+  const savePng = async () => {
+    if (!renderPath) return;
+    try {
+      const blob = await exportPNG([{ key: "character", src: assetUrl(renderPath), x: 0, y: 0, order: 0 }], {
+        padding: 0,
+        scale: pngScale,
+      });
+      downloadBlob(blob, `maple-character-${pngScale}x.png`);
+    } catch (e) {
+      flash(`PNG 저장 실패: ${(e as Error).message}`);
+    }
+  };
+
   const confirmReset = () => {
     if (Object.keys(state.equipment).length === 0 || window.confirm("착용한 아이템을 모두 해제할까요?")) reset();
   };
@@ -142,6 +161,23 @@ export default function CharacterDesigner() {
           <ToolbarButton onClick={loadCharacter}>불러오기</ToolbarButton>
           <ToolbarButton onClick={exportJson}>JSON 내보내기</ToolbarButton>
           <ToolbarButton onClick={() => fileInput.current?.click()}>JSON 가져오기</ToolbarButton>
+          <span className="flex items-stretch">
+            <ToolbarButton onClick={savePng} disabled={!renderPath}>
+              PNG 저장
+            </ToolbarButton>
+            <select
+              aria-label="PNG 배율"
+              value={pngScale}
+              onChange={(e) => setPngScale(Number(e.target.value))}
+              className="ml-1 rounded-lg border border-slate-300 bg-white px-1 text-sm"
+            >
+              {[1, 2, 4].map((n) => (
+                <option key={n} value={n}>
+                  {n}x
+                </option>
+              ))}
+            </select>
+          </span>
           <input
             ref={fileInput}
             type="file"
@@ -178,7 +214,14 @@ export default function CharacterDesigner() {
               {categories && <CategoryList categories={categories} selected={category} onSelect={setCategory} />}
             </div>
             <div className="order-1 rounded-xl bg-slate-50 p-4 md:order-2">
-              <CharacterPreview equipment={state.equipment} names={names} onRemove={unequip} />
+              <CharacterPreview
+                equipment={state.equipment}
+                names={names}
+                onRemove={unequip}
+                renderPath={renderPath}
+                action={action}
+                onActionChange={setAction}
+              />
             </div>
           </div>
 

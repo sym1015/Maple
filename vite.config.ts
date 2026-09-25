@@ -3,7 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
+import { renderProxy } from "./scripts/render-proxy.ts";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 
@@ -45,17 +46,26 @@ function localAssets(): Plugin {
     closeBundle() {
       for (const dir of LOCAL_DIRS) {
         const from = path.join(root, dir);
-        if (existsSync(from)) cpSync(from, path.join(outDir, dir), { recursive: true });
+        if (!existsSync(from)) continue;
+        cpSync(from, path.join(outDir, dir), {
+          recursive: true,
+          // The render cache is only for the local proxy.
+          filter: (src) => !src.startsWith(path.join(root, "assets", "renders")),
+        });
       }
     },
   };
 }
 
-export default defineConfig({
-  // Relative base so the build works at any path (e.g. GitHub Pages /Maple/).
-  base: "./",
-  publicDir: false,
-  // Keep bundled files apart from the collector's assets/ folder.
-  build: { assetsDir: "static" },
-  plugins: [react(), tailwindcss(), localAssets()],
+export default defineConfig(({ mode }) => {
+  // .env is shared with the asset collector; only MAPLE_API_BASE is needed here.
+  const env = loadEnv(mode, root, "MAPLE_");
+  return {
+    // Relative base so the build works at any path (e.g. GitHub Pages /Maple/).
+    base: "./",
+    publicDir: false,
+    // Keep bundled files apart from the collector's assets/ folder.
+    build: { assetsDir: "static" },
+    plugins: [react(), tailwindcss(), localAssets(), renderProxy({ root, apiBase: env.MAPLE_API_BASE })],
+  };
 });
