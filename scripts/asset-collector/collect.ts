@@ -85,7 +85,7 @@ async function main() {
       description: raw.desc || undefined,
       isCash: raw.isCash,
       requiredGender: raw.requiredGender,
-      icon: `/assets/items/${category}/${raw.id}.png`,
+      icon: `assets/items/${category}/${raw.id}.png`,
     };
   });
 

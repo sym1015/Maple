@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = path.resolve(__dirname, "../..");
+const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 
 // Load .env from the project root if present (Node >= 20.12). Real env vars win.
 const envFile = path.join(ROOT, ".env");

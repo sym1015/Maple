@@ -1,0 +1,68 @@
+import { CATEGORY_LABELS, SLOT_TO_CATEGORY } from "../../lib/categories";
+import type { CharacterEquipment, EquipmentSlot } from "../../types/character";
+
+interface Props {
+  equipment: CharacterEquipment;
+  /** Names of equipped items, when their category data has been loaded. */
+  names: ReadonlyMap<number, string>;
+  onRemove: (slot: EquipmentSlot) => void;
+}
+
+/**
+ * Simple original mannequin shown until sprite layers are available. The real
+ * layered renderer (lib/renderer.ts) replaces this in a later step.
+ */
+function Mannequin() {
+  return (
+    <svg viewBox="0 0 80 120" className="h-48 w-32" aria-hidden>
+      <g fill="#e2e8f0" stroke="#94a3b8" strokeWidth="2">
+        <circle cx="40" cy="26" r="16" />
+        <rect x="26" y="44" width="28" height="36" rx="8" />
+        <rect x="14" y="48" width="10" height="28" rx="5" />
+        <rect x="56" y="48" width="10" height="28" rx="5" />
+        <rect x="28" y="80" width="10" height="30" rx="5" />
+        <rect x="42" y="80" width="10" height="30" rx="5" />
+      </g>
+    </svg>
+  );
+}
+
+export default function CharacterPreview({ equipment, names, onRemove }: Props) {
+  const slots = (Object.keys(equipment) as EquipmentSlot[]).filter((s) => equipment[s]);
+
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <div className="flex h-64 w-full items-center justify-center rounded-xl bg-[linear-gradient(45deg,#f1f5f9_25%,transparent_25%,transparent_75%,#f1f5f9_75%),linear-gradient(45deg,#f1f5f9_25%,transparent_25%,transparent_75%,#f1f5f9_75%)] bg-[length:16px_16px] bg-[position:0_0,8px_8px] bg-white">
+        <Mannequin />
+      </div>
+
+      <section className="w-full">
+        <h2 className="mb-2 text-sm font-semibold text-slate-700">착용 중 ({slots.length})</h2>
+        {slots.length === 0 ? (
+          <p className="text-sm text-slate-400">아래 목록에서 아이템을 눌러 착용하세요.</p>
+        ) : (
+          <ul className="grid gap-1 sm:grid-cols-2">
+            {slots.map((slot) => {
+              const id = equipment[slot]!;
+              return (
+                <li key={slot} className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-1.5 text-sm">
+                  <span className="min-w-0 truncate">
+                    <span className="mr-2 text-xs text-slate-400">{CATEGORY_LABELS[SLOT_TO_CATEGORY[slot]]}</span>
+                    {names.get(id) ?? id}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onRemove(slot)}
+                    className="shrink-0 rounded px-2 py-0.5 text-xs text-slate-500 hover:bg-red-50 hover:text-red-600"
+                  >
+                    해제
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
