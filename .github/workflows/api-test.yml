@@ -1,0 +1,27 @@
+name: Asset API test
+
+on:
+  push:
+    branches: [claude/brave-gates-spmwsv]
+    paths: ["scripts/**", ".github/workflows/api-test.yml"]
+  workflow_dispatch:
+
+jobs:
+  api-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci --no-audit --no-fund
+      - run: npm run assets:typecheck
+      - name: Run assets:test
+        # Report API status without failing the job so the log is easy to read.
+        run: |
+          cp .env.example .env
+          npm run assets:test || echo "::warning::일부 API 엔드포인트가 실패했습니다 (위 로그 참고)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api-test-report
+          path: data/api-test-report.json

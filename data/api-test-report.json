@@ -1,0 +1,78 @@
+{
+  "testedAt": "2026-09-25T18:19:02.857Z",
+  "base": "https://maplestory.io/api/gms/latest",
+  "checks": [
+    {
+      "label": "API connection",
+      "url": "https://maplestory.io/api/wz",
+      "status": 403,
+      "ok": false,
+      "contentType": "text/plain",
+      "bytes": 100,
+      "sample": "Host not in allowlist: maplestory.io. Add this host to your network egress settings to allow access."
+    },
+    {
+      "label": "Item endpoint",
+      "url": "https://maplestory.io/api/gms/latest/item",
+      "status": 403,
+      "ok": false,
+      "contentType": "text/plain",
+      "bytes": 100,
+      "sample": "Host not in allowlist: maplestory.io. Add this host to your network egress settings to allow access."
+    },
+    {
+      "label": "Category endpoint",
+      "url": "https://maplestory.io/api/gms/latest/item/category",
+      "status": 403,
+      "ok": false,
+      "contentType": "text/plain",
+      "bytes": 100,
+      "sample": "Host not in allowlist: maplestory.io. Add this host to your network egress settings to allow access."
+    },
+    {
+      "label": "Category detail",
+      "url": "https://maplestory.io/api/gms/latest/item/category/{category}",
+      "status": 0,
+      "ok": false,
+      "contentType": "",
+      "bytes": 0,
+      "error": "카테고리 목록 응답에서 카테고리 이름을 찾지 못해 건너뜀"
+    },
+    {
+      "label": "Item detail",
+      "url": "https://maplestory.io/api/gms/latest/item/1302000",
+      "status": 403,
+      "ok": false,
+      "contentType": "text/plain",
+      "bytes": 100,
+      "sample": "Host not in allowlist: maplestory.io. Add this host to your network egress settings to allow access."
+    },
+    {
+      "label": "Item name",
+      "url": "https://maplestory.io/api/gms/latest/item/1302000/name",
+      "status": 403,
+      "ok": false,
+      "contentType": "text/plain",
+      "bytes": 100,
+      "sample": "Host not in allowlist: maplestory.io. Add this host to your network egress settings to allow access."
+    },
+    {
+      "label": "Icon endpoint",
+      "url": "https://maplestory.io/api/gms/latest/item/1302000/icon",
+      "status": 403,
+      "ok": false,
+      "contentType": "text/plain",
+      "bytes": 100,
+      "sample": "Host not in allowlist: maplestory.io. Add this host to your network egress settings to allow access."
+    },
+    {
+      "label": "IconRaw endpoint",
+      "url": "https://maplestory.io/api/gms/latest/item/1302000/iconRaw",
+      "status": 403,
+      "ok": false,
+      "contentType": "text/plain",
+      "bytes": 100,
+      "sample": "Host not in allowlist: maplestory.io. Add this host to your network egress settings to allow access."
+    }
+  ]
+}
