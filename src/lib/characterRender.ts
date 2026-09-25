@@ -10,9 +10,10 @@ import type { CharacterEquipment, EquipmentSlot } from "../types/character";
 
 export const DEFAULT_SKIN = 2000;
 
-/** Action names taken from the frameBooks of real items (stand1 verified for rendering). */
-export const ACTIONS = ["stand1", "stand2", "walk1", "alert", "sit", "jump", "prone", "fly", "ladder", "rope"] as const;
-export type CharacterAction = (typeof ACTIONS)[number];
+/** Default action; verified to render for every character. */
+export const DEFAULT_ACTION = "stand1";
+/** Action names come from GET Character/actions/{items} (see loadActions). */
+export type CharacterAction = string;
 
 /** Items sent to the API; body is handled separately as the skin id. */
 const ITEM_SLOTS: EquipmentSlot[] = [
@@ -45,7 +46,35 @@ export function skinIdFor(equipment: CharacterEquipment): number {
   return id >= 10000 ? id - 10000 : id;
 }
 
-export function characterRenderPath(equipment: CharacterEquipment, action: CharacterAction = "stand1", frame = 0): string {
-  const items = ITEM_SLOTS.map((slot) => equipment[slot]).filter((id): id is number => !!id);
-  return `render/character/${skinIdFor(equipment)}/${items.join(",")}/${action}/${frame}.png`;
+/** Equipped item ids in render order (skin excluded). */
+export function equipmentItemIds(equipment: CharacterEquipment): number[] {
+  return ITEM_SLOTS.map((slot) => equipment[slot]).filter((id): id is number => !!id);
+}
+
+export function characterRenderPath(equipment: CharacterEquipment, action: CharacterAction = DEFAULT_ACTION, frame = 0): string {
+  return `render/character/${skinIdFor(equipment)}/${equipmentItemIds(equipment).join(",")}/${action}/${frame}.png`;
+}
+
+const actionsCache = new Map<string, Promise<string[]>>();
+
+/**
+ * Actions the API can render for this equipment (verified: JSON array of names).
+ * The API errors when no item is equipped, so that case returns an empty list.
+ */
+export function loadActions(equipment: CharacterEquipment, resolve: (path: string) => string): Promise<string[]> {
+  const ids = equipmentItemIds(equipment);
+  if (!ids.length) return Promise.resolve([]);
+  const key = ids.join(",");
+  let pending = actionsCache.get(key);
+  if (!pending) {
+    pending = fetch(resolve(`render/actions/${key}.json`)).then(async (res) => {
+      if (!res.ok) throw new Error(`동작 목록을 받지 못했습니다 (HTTP ${res.status})`);
+      const list: unknown = await res.json();
+      if (!Array.isArray(list) || !list.every((a) => typeof a === "string")) throw new Error("동작 목록 형식이 예상과 다릅니다.");
+      return list;
+    });
+    pending.catch(() => actionsCache.delete(key));
+    actionsCache.set(key, pending);
+  }
+  return pending;
 }

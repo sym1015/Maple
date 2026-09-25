@@ -3,6 +3,9 @@
  *
  *   GET /render/character/{skinId}/{itemIds}/{action}/{frame}.png
  *     → ${MAPLE_API_BASE}/${region}/${version}/Character/{skinId}/{itemIds}/{action}/{frame}
+ *   GET /render/actions/{itemIds}.json
+ *     → ${MAPLE_API_BASE}/${region}/${version}/Character/actions/{itemIds}
+ *     (verified: JSON array of action names; 500 when no item ids are given)
  *
  * Why: the API composites body, head and equipment in the game's layer order (zmap), but
  * its responses carry no CORS header, so the browser cannot fetch them for PNG export.
@@ -18,6 +21,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import type { Connect, Plugin } from "vite";
 
+const ACTIONS_ROUTE = /^\/render\/actions\/(\d{1,8}(?:,\d{1,8}){0,39})\.json$/;
 const ROUTE = /^\/render\/character\/(\d{1,6})\/(\d{1,8}(?:,\d{1,8}){0,39})?\/([A-Za-z][A-Za-z0-9]{0,23})\/(\d{1,2})\.png$/;
 const MAX_PARALLEL = 2;
 const TIMEOUT_MS = 30_000;
@@ -59,28 +63,32 @@ export function renderProxy({ root, apiBase }: Options): Plugin {
   const handler: Connect.NextHandleFunction = (req: IncomingMessage, res: ServerResponse, next) => {
     const url = (req.url ?? "").split("?")[0];
     if (!url.startsWith("/render/")) return next();
+    const actions = ACTIONS_ROUTE.exec(url);
     const m = ROUTE.exec(url);
-    if (!m) return send(res, 400, "잘못된 렌더 주소입니다.");
-    const [, skin, items = "", action, frame] = m;
+    if (!m && !actions) return send(res, 400, "잘못된 렌더 주소입니다.");
 
     if (!apiBase) return send(res, 503, "MAPLE_API_BASE 가 설정되지 않았습니다 (.env 확인).");
     const version = readVersion();
     if (!version) return send(res, 503, "data/manifest.json 이 없습니다. 먼저 npm run assets:collect 를 실행하세요.");
+    const api = `${apiBase.replace(/\/+$/, "")}/${version}/Character`;
+    const cacheDir = path.join(root, "assets", "renders", version.replace("/", "-"));
 
-    const upstream = items
-      ? `${apiBase.replace(/\/+$/, "")}/${version}/Character/${skin}/${items}/${action}/${frame}`
-      : `${apiBase.replace(/\/+$/, "")}/${version}/Character/${skin}`;
-    const cacheFile = path.join(
-      root,
-      "assets",
-      "renders",
-      version.replace("/", "-"),
-      `${skin}_${items.replaceAll(",", "-") || "base"}_${action}_${frame}.png`,
-    );
+    let upstream: string, cacheFile: string, expectType: string;
+    if (actions) {
+      const items = actions[1];
+      upstream = `${api}/actions/${items}`;
+      cacheFile = path.join(cacheDir, `actions_${items.replaceAll(",", "-")}.json`);
+      expectType = "application/json";
+    } else {
+      const [, skin, items = "", action, frame] = m!;
+      upstream = items ? `${api}/${skin}/${items}/${action}/${frame}` : `${api}/${skin}`;
+      cacheFile = path.join(cacheDir, `${skin}_${items.replaceAll(",", "-") || "base"}_${action}_${frame}.png`);
+      expectType = "image/png";
+    }
 
     if (existsSync(cacheFile)) {
       res.setHeader("Cache-Control", "public, max-age=86400");
-      return send(res, 200, readFileSync(cacheFile), "image/png");
+      return send(res, 200, readFileSync(cacheFile), expectType);
     }
 
     let pending = inFlight.get(cacheFile);
@@ -89,7 +97,7 @@ export function renderProxy({ root, apiBase }: Options): Plugin {
         const r = await fetch(upstream, { signal: AbortSignal.timeout(TIMEOUT_MS) });
         const body = Buffer.from(await r.arrayBuffer());
         const type = r.headers.get("content-type") ?? "";
-        if (!r.ok || !type.startsWith("image/png")) {
+        if (!r.ok || !type.startsWith(expectType)) {
           throw Object.assign(new Error(`API ${r.status} ${type}: ${upstream}`), { status: r.status });
         }
         mkdirSync(path.dirname(cacheFile), { recursive: true });
@@ -100,7 +108,7 @@ export function renderProxy({ root, apiBase }: Options): Plugin {
     }
 
     pending
-      .then((body) => send(res, 200, body, "image/png"))
+      .then((body) => send(res, 200, body, expectType))
       .catch((err: Error & { status?: number }) => {
         console.warn(`[render-proxy] ${err.message}`);
         send(res, err.status === 404 ? 404 : 502, `캐릭터 렌더 실패: ${err.message}`);

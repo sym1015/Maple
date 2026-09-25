@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { CATEGORY_LABELS, SLOT_TO_CATEGORY } from "../../lib/categories";
-import { ACTIONS, type CharacterAction } from "../../lib/characterRender";
+import type { CharacterAction } from "../../lib/characterRender";
 import { assetUrl } from "../../lib/mapleApi";
 import type { CharacterEquipment, EquipmentSlot } from "../../types/character";
 
@@ -12,6 +12,8 @@ interface Props {
   /** Same-origin render path (lib/characterRender.ts), or null when rendering is unavailable. */
   renderPath: string | null;
   action: CharacterAction;
+  /** Actions reported by the API for the current equipment. */
+  actions: string[];
   onActionChange: (action: CharacterAction) => void;
 }
 
@@ -41,7 +43,7 @@ function Mannequin() {
   );
 }
 
-export default function CharacterPreview({ equipment, names, onRemove, renderPath, action, onActionChange }: Props) {
+export default function CharacterPreview({ equipment, names, onRemove, renderPath, action, actions, onActionChange }: Props) {
   const slots = (Object.keys(equipment) as EquipmentSlot[]).filter((s) => equipment[s]);
   const path = useDebounced(renderPath, 300);
   const [status, setStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
@@ -92,10 +94,12 @@ export default function CharacterPreview({ equipment, names, onRemove, renderPat
           동작
           <select
             value={action}
-            onChange={(e) => onActionChange(e.target.value as CharacterAction)}
+            onChange={(e) => onActionChange(e.target.value)}
+            disabled={actions.length === 0}
+            title={actions.length === 0 ? "아이템을 하나 이상 착용하면 동작을 고를 수 있습니다." : undefined}
             className="rounded border border-slate-300 bg-white px-1 py-0.5 text-xs"
           >
-            {ACTIONS.map((a) => (
+            {(actions.includes(action) ? actions : [action, ...actions]).map((a) => (
               <option key={a} value={a}>
                 {a}
               </option>

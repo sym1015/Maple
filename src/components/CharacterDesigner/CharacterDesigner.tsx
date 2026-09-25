@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCharacter } from "../../hooks/useCharacter";
 import { CATEGORY_LABELS, SLOT_TO_CATEGORY } from "../../lib/categories";
-import { characterRenderPath, type CharacterAction } from "../../lib/characterRender";
+import { characterRenderPath, DEFAULT_ACTION, loadActions, type CharacterAction } from "../../lib/characterRender";
 import { assetUrl, loadCategories, loadCategoryItems } from "../../lib/mapleApi";
 import { exportPNG } from "../../lib/renderer";
 import { downloadBlob, parseCharacterFile, sanitizeEquipment, toCharacterFile } from "../../lib/storage";
@@ -41,7 +41,8 @@ export default function CharacterDesigner() {
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [names, setNames] = useState<ReadonlyMap<number, string>>(new Map());
-  const [action, setAction] = useState<CharacterAction>("stand1");
+  const [action, setAction] = useState<CharacterAction>(DEFAULT_ACTION);
+  const [actions, setActions] = useState<string[]>([]);
   const [pngScale, setPngScale] = useState(2);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -87,6 +88,23 @@ export default function CharacterDesigner() {
   }, [state.equipment]);
 
   const noticeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Action list depends on the equipment (e.g. weapon type); fall back to stand1 when the
+  // current action is no longer available.
+  useEffect(() => {
+    if (!categories) return;
+    let cancelled = false;
+    loadActions(state.equipment, assetUrl)
+      .then((list) => {
+        if (cancelled) return;
+        setActions(list);
+        setAction((current) => (list.length === 0 || list.includes(current) ? current : DEFAULT_ACTION));
+      })
+      .catch(() => !cancelled && setActions([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [categories, state.equipment]);
+
   const flash = useCallback((message: string) => {
     // Restart the timer so an earlier notice's timeout cannot hide this one early.
     clearTimeout(noticeTimer.current);
@@ -224,6 +242,7 @@ export default function CharacterDesigner() {
                 onRemove={unequip}
                 renderPath={renderPath}
                 action={action}
+                actions={actions}
                 onActionChange={setAction}
               />
             </div>
