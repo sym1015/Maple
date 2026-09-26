@@ -55,9 +55,10 @@ interface Failure {
   attempts: number;
 }
 
-const writeJson = (file: string, data: unknown) => {
+/** Item lists are written compactly (no indentation): hair alone has 17k entries. */
+const writeJson = (file: string, data: unknown, pretty = false) => {
   mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(data, null, 2) + "\n");
+  writeFileSync(file, (pretty ? JSON.stringify(data, null, 2) : JSON.stringify(data)) + "\n");
 };
 
 async function main() {
@@ -154,7 +155,7 @@ async function main() {
       }),
     );
     writeJson(path.join(dataDir, "raw", "item-category.json"), categoryTree);
-    writeJson(path.join(dataDir, "download-failures.json"), failures);
+    writeJson(path.join(dataDir, "download-failures.json"), failures, true);
     writeJson(path.join(dataDir, "manifest.json"), {
       version: `${region}/${version}`,
       generatedAt: new Date().toISOString(),

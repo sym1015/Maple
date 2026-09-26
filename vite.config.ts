@@ -40,6 +40,8 @@ function localAssets(): Plugin {
           return res.end();
         }
         res.setHeader("Content-Type", MIME[path.extname(file)] ?? "application/octet-stream");
+        // Icons/renders never change once written; item lists do (collector rewrites them).
+        res.setHeader("Cache-Control", dir === "assets" ? "public, max-age=86400" : "no-cache");
         createReadStream(file).pipe(res);
       });
     },
@@ -66,6 +68,12 @@ export default defineConfig(({ mode }) => {
     publicDir: false,
     // Keep bundled files apart from the collector's assets/ folder.
     build: { assetsDir: "static" },
+    server: {
+      // data/ and assets/ hold tens of thousands of collected files that change while the
+      // collector runs; they are not source code, and watching them makes the dev server
+      // slow (especially on Windows).
+      watch: { ignored: ["**/data/**", "**/assets/**", "**/dist/**"] },
+    },
     plugins: [react(), tailwindcss(), localAssets(), renderProxy({ root, apiBase: env.MAPLE_API_BASE })],
   };
 });
