@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { actionLabel } from "../../lib/actionLabels";
 import { downloadBlob } from "../../lib/storage";
 import { buildZip, runExport, type AnimationProgress, type ExportResult } from "../../lib/sprite/exporter";
 import type { AnchorMode } from "../../lib/sprite/frames";
@@ -145,10 +146,11 @@ export default function SpriteExporter({ equipment, actions }: Props) {
                 <label key={a} className="flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 text-xs">
                   <input
                     type="checkbox"
+                    data-action={a}
                     checked={selected.includes(a)}
                     onChange={(e) => setSelected((s) => (e.target.checked ? [...s, a] : s.filter((x) => x !== a)))}
                   />
-                  {a}
+                  {actionLabel(a)}
                 </label>
               ))}
             </div>
@@ -275,7 +277,7 @@ export default function SpriteExporter({ equipment, actions }: Props) {
             return (
               <div key={p.animation} className="text-xs text-slate-600">
                 <div className="flex justify-between">
-                  <span className="font-medium">{p.animation}</span>
+                  <span className="font-medium">{actionLabel(p.animation)}</span>
                   <span>
                     {p.status === "waiting" && "대기"}
                     {p.status === "loading" && `프레임 ${p.loadedFrames}장 받음`}
@@ -320,8 +322,9 @@ export default function SpriteExporter({ equipment, actions }: Props) {
           {result.results.map((r) => (
             <article key={r.animation} className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-3">
               <header className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-slate-700">
-                  {r.animation} · 프레임 {r.frames.length}장 · 칸 {r.sheet.cell.width}×{r.sheet.cell.height}px
+                <h3 className="text-sm font-semibold text-slate-700" data-action={r.animation}>
+                  {actionLabel(r.animation)} · 프레임 {r.frames.length}장 · 칸 {r.sheet.cell.width}×{r.sheet.cell.height}px
+                  <span className="ml-2 text-xs font-normal text-slate-400">파일 이름: {r.animation}</span>
                 </h3>
                 <div className="flex gap-2 text-xs">
                   <button
@@ -372,7 +375,7 @@ export default function SpriteExporter({ equipment, actions }: Props) {
 
               <div>
                 <p className="mb-1 text-xs text-slate-500">시트로 재생해 보기</p>
-                <AnimationPlayer frames={r.sheet.frameCanvases} initialFps={settings.fps} label={`${r.animation} 재생`} />
+                <AnimationPlayer frames={r.sheet.frameCanvases} initialFps={settings.fps} label={`${actionLabel(r.animation)} 재생`} />
               </div>
             </article>
           ))}

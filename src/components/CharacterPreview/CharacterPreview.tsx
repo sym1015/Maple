@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { CATEGORY_LABELS, SLOT_TO_CATEGORY } from "../../lib/categories";
+import { actionLabel } from "../../lib/actionLabels";
 import type { CharacterAction } from "../../lib/characterRender";
 import { assetUrl } from "../../lib/mapleApi";
 import type { CharacterEquipment, EquipmentSlot } from "../../types/character";
@@ -101,7 +102,7 @@ export default function CharacterPreview({ equipment, names, onRemove, renderPat
           >
             {(actions.includes(action) ? actions : [action, ...actions]).map((a) => (
               <option key={a} value={a}>
-                {a}
+                {actionLabel(a)}
               </option>
             ))}
           </select>

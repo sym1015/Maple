@@ -65,10 +65,8 @@ await page.evaluate((eq) => localStorage.setItem("maple-character-state", JSON.s
 await page.reload();
 await page.getByRole("button", { name: "스프라이트 시트" }).click();
 const panel = page.getByRole("region", { name: "스프라이트 시트 내보내기" });
-await panel.getByRole("checkbox", { name: "stand1" }).waitFor({ timeout: 60000 });
-const actions = await panel.getByRole("checkbox").evaluateAll((els) =>
-  els.filter((e) => e.closest("div.flex-wrap")).map((e) => e.parentElement.textContent.trim()),
-);
+await panel.locator('input[data-action="stand1"]').waitFor({ timeout: 60000 });
+const actions = await panel.locator("input[data-action]").evaluateAll((els) => els.map((e) => e.dataset.action));
 console.log(`앱이 받은 동작 목록 (${actions.length}): ${actions.join(", ")}`);
 await panel.getByLabel("확대").selectOption("1");
 const started = Date.now();
