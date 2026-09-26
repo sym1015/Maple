@@ -44,6 +44,8 @@ export interface RandomResult {
   equipment: CharacterEquipment;
   /** Included categories that had nothing to pick from (kept as before). */
   empty: DesignerCategory[];
+  /** Categories that received a new random item. */
+  changed: DesignerCategory[];
 }
 
 export async function randomEquipment(
@@ -51,6 +53,7 @@ export async function randomEquipment(
   options: RandomOptions,
   load: (category: DesignerCategory) => Promise<MapleItem[]>,
   random: () => number = Math.random,
+  onProgress?: (loaded: number, total: number) => void,
 ): Promise<RandomResult> {
   const include = (c: DesignerCategory) => !!options.include[c];
 
@@ -67,18 +70,33 @@ export async function randomEquipment(
     return true;
   });
 
+  // Load every needed list at once (hair/face lists are several MB each); loading them
+  // one after another made the first roll feel stuck on slower PCs.
+  let loaded = 0;
+  onProgress?.(0, order.length);
+  const lists = await Promise.all(
+    order.map((c) =>
+      load(c).then((items) => {
+        onProgress?.(++loaded, order.length);
+        return items;
+      }),
+    ),
+  );
+
   const equipment: CharacterEquipment = { ...current };
   const empty: DesignerCategory[] = [];
-  for (const category of order) {
+  const changed: DesignerCategory[] = [];
+  for (const [index, category] of order.entries()) {
     const slot = CATEGORY_TO_SLOT[category];
     if (!slot) continue;
-    let items = await load(category);
+    let items = lists[index];
     if (options.iconOnly) items = items.filter((i) => i.icon);
     if (!items.length) {
       empty.push(category);
       continue;
     }
     equipment[slot] = items[Math.floor(random() * items.length)].id;
+    changed.push(category);
   }
 
   // Resolve the outfit conflict the same way the equip rules do.
@@ -88,5 +106,5 @@ export async function randomEquipment(
   } else if (!useOverall && (equipment.top || equipment.bottom) && order.some((c) => c === "top" || c === "bottom")) {
     delete equipment.overall;
   }
-  return { equipment, empty };
+  return { equipment, empty, changed };
 }

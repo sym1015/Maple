@@ -37,6 +37,7 @@ export default function Randomizer({ equipment, onApply, onMessage, disabled }: 
   const [options, setOptions] = useState<RandomOptions>(loadOptions);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [history, setHistory] = useState<CharacterEquipment[]>([]);
   const panel = useRef<HTMLDivElement>(null);
 
@@ -65,19 +66,22 @@ export default function Randomizer({ equipment, onApply, onMessage, disabled }: 
     }
     setBusy(true);
     try {
-      const { equipment: next, empty } = await randomEquipment(equipment, options, loadCategoryItems);
+      const { equipment: next, empty, changed } = await randomEquipment(equipment, options, loadCategoryItems, Math.random, (loaded, total) =>
+        setProgress({ loaded, total }),
+      );
       setHistory((h) => [...h, equipment].slice(-HISTORY_LIMIT));
       onApply(next);
+      const parts = [`랜덤 조합 완료: ${changed.length}개 카테고리를 바꿨습니다.`];
       if (empty.length) {
         const names = empty.map((c) => CATEGORY_LABELS[c]).join(", ");
-        onMessage(
-          `${names}: ${options.iconOnly ? "아이콘을 받은 아이템이 없어" : "아이템이 없어"} 그대로 두었습니다.`,
-        );
+        parts.push(`${names}은(는) ${options.iconOnly ? "아이콘을 받은 아이템이 없어" : "아이템이 없어"} 그대로 두었습니다.`);
       }
+      onMessage(parts.join(" "));
     } catch (e) {
       onMessage(`랜덤 조합 실패: ${(e as Error).message}`);
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   };
 
@@ -93,7 +97,7 @@ export default function Randomizer({ equipment, onApply, onMessage, disabled }: 
   return (
     <span className="relative flex items-stretch gap-1" ref={panel}>
       <button type="button" className={btn} onClick={roll} disabled={disabled || busy}>
-        {busy ? "고르는 중…" : "🎲 랜덤 조합"}
+        {busy ? (progress && progress.loaded < progress.total ? `목록 불러오는 중 ${progress.loaded}/${progress.total}` : "고르는 중…") : "🎲 랜덤 조합"}
       </button>
       <button type="button" className={btn} onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label="랜덤 조합 설정">
         ⚙
